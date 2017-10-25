@@ -16,11 +16,25 @@ tautFormulas = [
   , BinForm Equiv (C (Var 'a')) (C (Not (Not (Var 'a'))))
   ]
 
+-- | Formuly bedace tautologiami w LSB3_T
+tautTFormulas :: [Logic]
+tautTFormulas = [
+    C $ (BinForm Impl (Var 'q') (BinForm Impl (Var 'p') (Var 'q')))
+  , C $ BinForm Impl (BinForm Impl (Var 'p') (Var 'q'))
+                     (BinForm Impl (BinForm Impl (Var 'q') (Var 'r'))
+                                   (BinForm Impl (Var 'p') (Var 'r')))
+    ]
+
+-- | Formuly bedace tautologiami w LSB3_P
+tautPFormulas :: [Logic]
+tautPFormulas = []
+
 -- | Formuly spelnialne w LSB3_t
 satFormulas :: [Logic]
 satFormulas = [
   BinForm Impl (Not (C (Not (Var 'p')))) (C (Var 'p'))
   ]
+
 
 -- | Formuly niespelnialne w LSB3_t
 -- czyli negacje tautologii z LSB3_t
@@ -45,11 +59,28 @@ shouldSatTaut sat = mapM_ (\(f, num) ->
                     it ("should sat (taut) "++(show num)) $ sat f `shouldBe` True
                        ) $ zip tautFormulas nats
 
+shouldSatNoTaut :: [Logic] -> (Logic -> Bool) -> Spec
+shouldSatNoTaut forms sat = mapM_ (\(f, num) ->
+                      it ("should sat (no taut) "++(show num)) $ sat f `shouldBe` False
+                        ) $ zip forms nats
+
 spec :: Spec
 spec = do
-  describe "funkcja sat powinna spelniac" $
-    shouldSat runSatDPLL
-  describe "funkcja sat nie powinna spelniac" $
-    shouldNotSat runSatDPLL
-  describe "funkcja sat (taut) powinna spelniac" $
-    shouldSatTaut runTautDPLL
+  describe "funkcja sat powinna spelniac" $ do
+    describe "lsb3_p" $
+      shouldSat runSatPDPLL
+    describe "lsb3_t" $
+      shouldSat runSatTDPLL
+  describe "funkcja sat nie powinna spelniac" $ do
+    describe "lsb3_p" $
+      shouldNotSat runSatPDPLL
+    describe "lsb3_t" $
+      shouldNotSat runSatTDPLL
+  describe "funkcja sat (taut) powinna spelniac" $ do
+    describe "lsb3_p" $
+      shouldSatTaut runTautPDPLL
+    describe "lsb3_t" $
+      shouldSatTaut runTautTDPLL -- TODO: tautologie tylko w t dodac
+  describe "funkcja sat (taut) nie powinna spelniac" $ do
+    describe "lsb3_p" $
+      shouldSatNoTaut tautTFormulas runTautPDPLL

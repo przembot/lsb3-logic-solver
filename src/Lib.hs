@@ -94,7 +94,7 @@ removeNeg = removeNegO notO
     -- wartosc stala
     removeNegO notX (Const x) = Const (notX x)
     -- rekurencja
-    removeNegO _ (Not (C x)) = C (removeNegO notI (Not x)) -- TODO: test
+    -- removeNegO _ (Not (C x)) = C (removeNegO notI (Not x)) -- TODO: test
     removeNegO notX (Not x) = Not (removeNegO notX x)
     removeNegO notX (BinForm op x y) = BinForm op (removeNegO notX x) (removeNegO notX y)
     removeNegO _ (C x) = C $ removeNegO notI x
@@ -248,60 +248,89 @@ reduceOrP (Const _) x = x
 reduceOrP x (Const _) = x
 reduceOrP x y = BinForm Or x y
 
+
+-- | Funkcja upraszczajaca And w logice Ct
+-- | w przypadku problemu SAT dziala tak samo jak dla Cp
+reduceAndT :: Logic -> Logic -> Logic
+reduceAndT = reduceAndP
+
+-- | Funkcja upraszczajaca Or w logice Ct
+-- Zgodna z tabela prawdy
+reduceOrT :: Logic -> Logic -> Logic
+reduceOrT (Const TrueV) _ = Const TrueV
+reduceOrT _ (Const TrueV) = Const TrueV
+reduceOrT (Const Neither) (Const Neither) = Const TrueV
+reduceOrT (Const Neither) (Const FalseV) = Const Neither
+reduceOrT (Const FalseV) (Const Neither) = Const Neither
+reduceOrT (Const FalseV) x = x
+reduceOrT x (Const FalseV) = x
+reduceOrT x y = BinForm Or x y
+
 -- | Upraszcza formule CNF wyrazenia Cp,
 -- jezeli to mozliwe to redukuje wyrazenie do wartosci logicznej
-simplifyP :: Logic -> Logic
-simplifyP (Const a) = Const a
-simplifyP (Var a) = Var a
-simplifyP (Not x) =
-  case simplifyP x of
+simplifyI :: (Logic -> Logic -> Logic)
+          -> (Logic -> Logic -> Logic)
+          -> Logic -> Logic
+simplifyI _ _ (Const a) = Const a
+simplifyI _ _ (Var a) = Var a
+simplifyI ra ro (Not x) =
+  case simplifyI ra ro x of
     Const y -> Const (notI y)
     e -> Not e
-simplifyP (BinForm And x y) =
-  reduceAndP (simplifyP x) (simplifyP y)
-simplifyP (BinForm Or x y) =
-  reduceOrP (simplifyP x) (simplifyP y)
-simplifyP x = x
+simplifyI ra ro (BinForm And x y) =
+  reduceAndP (simplifyI ra ro x) (simplifyI ra ro y)
+simplifyI ra ro (BinForm Or x y) =
+  reduceOrP (simplifyI ra ro x) (simplifyI ra ro y)
+simplifyI _ _ x = x
 
 
--- | Upraszcza formule CNF z logiki LSB3_P
-simplifyLP :: Logic -> Logic
-simplifyLP a@(Const _) = a
-simplifyLP a@(Var _) = a
+-- | Upraszcza formule CNF z logiki LSB3_t
+simplify :: (Logic -> Logic -> Logic) -- ^ reduceAnd
+         -> (Logic -> Logic -> Logic) -- ^ reduceOr
+         -> Logic -> Logic
+simplify _ _ a@(Const _) = a
+simplify _ _ a@(Var _) = a
 -- simplifyLP (C a@(Const _)) = a
-simplifyLP (Not x) =
-  case simplifyLP x of
+simplify ra ro (Not x) =
+  case simplify ra ro x of
     Const y -> Const (notO y)
     e -> Not e
 -- w przypadku wyrazenia Or/And redukcja zachodzi tak samo jak wewnatrz C_p
-simplifyLP (BinForm And x y) =
-  reduceAndP (simplifyLP x) (simplifyLP y)
-simplifyLP (BinForm Or x y) =
-  reduceOrP (simplifyLP x) (simplifyLP y)
-simplifyLP (C x) =
-  case simplifyP x of
+simplify ra ro (BinForm And x y) =
+  reduceAndP (simplify ra ro x) (simplify ra ro y)
+simplify ra ro (BinForm Or x y) =
+  reduceOrP (simplify ra ro x) (simplify ra ro y)
+simplify ra ro (C x) =
+  case simplifyI ra ro x of
     Const a -> Const a
     e -> C e
-simplifyLP x = x
+simplify _ _ x = x
+
+simplifyLP = simplify reduceAndP reduceOrP
+simplifyLT = simplify reduceAndT reduceOrT
 
 type Intepretation = [(Char, TriVal)]
 
-runSatDPLL :: Logic -> Bool
-runSatDPLL = satDPLL . convertToCnf . replaceImpl
+runSatPDPLL, runSatTDPLL :: Logic -> Bool
+runSatPDPLL = satDPLL simplifyLP . convertToCnf . replaceImpl
+runSatTDPLL = satDPLL simplifyLT . convertToCnf . replaceImpl
 
-runTautDPLL :: Logic -> Bool
-runTautDPLL = (==False) . runSatDPLL . Not
+runTautPDPLL, runTautTDPLL :: Logic -> Bool
+runTautPDPLL = (==False) . runSatPDPLL . Not
+runTautTDPLL = (==False) . runSatTDPLL . Not
 
 -- satDPLL :: Intepretation -> Logic -> Maybe Intepretation
-satDPLL :: Logic -> Bool
-satDPLL expr =
+satDPLL :: (Logic -> Logic) -- ^ simplify
+        -> Logic -> Bool
+satDPLL simp expr =
   case findFreeVar expr' of
     Nothing -> (==TrueV) . unConst . simplifyLP $ expr'
     Just var ->
       let
-        trueGuess = simplifyLP (guessVar var TrueV expr)
-        neitherGuess = simplifyLP (guessVar var Neither expr)
-        falseGuess = simplifyLP (guessVar var FalseV expr)
-      in satDPLL trueGuess || satDPLL neitherGuess || satDPLL falseGuess
+        trueGuess = simp (guessVar var TrueV expr)
+        neitherGuess = simp (guessVar var Neither expr)
+        falseGuess = simp (guessVar var FalseV expr)
+      in satDPLL' trueGuess || satDPLL' neitherGuess || satDPLL' falseGuess
  where
    expr' = literalElimination . unitPropagation $ expr
+   satDPLL' = satDPLL simp
