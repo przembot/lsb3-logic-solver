@@ -1,10 +1,11 @@
 module SatSpec (spec) where
 
 import Test.Hspec
-import Lib
 
+import Logic
+import SAT
 
--- | Formuly bedace tautologiami LSB3_t
+-- | Formuly bedace tautologiami LSB3_x
 tautFormulas :: [Logic]
 tautFormulas = [
     Not $ C (BinForm And (Var 'a') (Not (Var 'a')))
@@ -29,7 +30,7 @@ tautTFormulas = [
 tautPFormulas :: [Logic]
 tautPFormulas = []
 
--- | Formuly spelnialne w LSB3_t
+-- | Formuly spelnialne w LSB3_x
 satFormulas :: [Logic]
 satFormulas = [
   BinForm Impl (Not (C (Not (Var 'p')))) (C (Var 'p'))
@@ -45,8 +46,8 @@ unsatFormulas = map Not tautFormulas
 nats :: [Int]
 nats = 1 : map (+1) nats
 
-shouldSat, shouldNotSat, shouldSatTaut :: (Logic -> Bool) -- ^ solver
-                                       -> Spec
+shouldSat, shouldNotSat :: (Logic -> Bool) -- ^ solver
+                        -> Spec
 shouldSat sat = mapM_ (\(f, num) ->
                   it ("should sat "++(show num)) $ sat f `shouldBe` True
                       ) $ zip (tautFormulas++satFormulas) nats
@@ -55,9 +56,10 @@ shouldNotSat sat = mapM_ (\(f, num) ->
                   it ("should unsat "++(show num)) $ sat f `shouldBe` False
                       ) $ zip unsatFormulas nats
 
-shouldSatTaut sat = mapM_ (\(f, num) ->
-                    it ("should sat (taut) "++(show num)) $ sat f `shouldBe` True
-                       ) $ zip tautFormulas nats
+shouldSatTaut :: [Logic] -> (Logic -> Bool) -> Spec
+shouldSatTaut set sat = mapM_ (\(f, num) ->
+                        it ("should sat (taut) "++(show num)) $ sat f `shouldBe` True
+                        ) $ zip set nats
 
 shouldSatNoTaut :: [Logic] -> (Logic -> Bool) -> Spec
 shouldSatNoTaut forms sat = mapM_ (\(f, num) ->
@@ -78,9 +80,9 @@ spec = do
       shouldNotSat runSatTDPLL
   describe "funkcja sat (taut) powinna spelniac" $ do
     describe "lsb3_p" $
-      shouldSatTaut runTautPDPLL
+      shouldSatTaut tautFormulas runTautPDPLL
     describe "lsb3_t" $
-      shouldSatTaut runTautTDPLL -- TODO: tautologie tylko w t dodac
+      shouldSatTaut (tautFormulas ++ tautTFormulas) runTautTDPLL
   describe "funkcja sat (taut) nie powinna spelniac" $ do
     describe "lsb3_p" $
       shouldSatNoTaut tautTFormulas runTautPDPLL
