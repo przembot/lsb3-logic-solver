@@ -4,11 +4,16 @@ module SAT (
   , runSatPDPLL
   , runTautTDPLL
   , runTautPDPLL
+  , Error (..)
+  , Interpretation
+  , SatResult
+  , TautResult
   ) where
 
 import Data.Maybe (mapMaybe, listToMaybe)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
+import Control.Applicative ((<|>))
 
 import Logic
 import CNF
@@ -50,8 +55,9 @@ polToVPol (NotE (NotE x)) = VarPol (x, (False, False))
 
 
 -- | Znajduje wszystkie zmienne bedace w jednej polarnosci
-stripPolarities :: CNF -> HashMap Char BoolT
-stripPolarities = HM.mapMaybe id -- catMaybes
+stripPolarities :: CNF -> HashMap Char TriVal
+stripPolarities =   HM.map subs
+                  . HM.mapMaybe id
                   . foldl updateHMData HM.empty
                   . mapMaybe (fmap polToVPol . traverse sequence . fmap (fmap stripVar))
                   . concatMap sequence
@@ -67,15 +73,15 @@ subs (False, False) = TrueV
 
 -- | Podstaw za zmienna bedaca w jednej polarnosci w calym wyrazeniu
 -- | odpowiednia stala wartosc
-literalElimination :: CNF -> CNF
+literalElimination :: CNF -> (Interpretation, CNF)
 literalElimination form =
   let
     varpols = stripPolarities form
-  in modifyAllVars
+  in (HM.toList varpols, modifyAllVars
     (\x -> case HM.lookup x varpols of
-                  Just pols -> Lit (subs pols)
+                  Just newval -> Lit newval
                   _ -> VarE x
-    ) form
+    ) form)
 
 
 -- | Czy klauzula zawiera tylko jedna zmienna - i jezli tak to jaka oraz
@@ -94,22 +100,15 @@ assignments = HM.fromList
             . mapMaybe isUnitClause
 
 -- | Podstawia wartosci za zmienne wystepujace samodzielnie
-unitPropagation :: CNF -> CNF
+unitPropagation :: CNF -> (Interpretation, CNF)
 unitPropagation form =
   let
     subsmap = assignments form
-  in modifyAllVars
+  in (HM.toList subsmap, modifyAllVars
     (\x -> case HM.lookup x subsmap of
                   Just val -> Lit val
                   _ -> VarE x
-    ) form
-
--- | Czy klauzula jest niepusta
-isNonEmptyClause :: Clause -> Bool
-isNonEmptyClause [Pure []] = False -- wewnatrz jest falsz
-isNonEmptyClause [NotE []] = False -- j/w
-isNonEmptyClause [] = False
-isNonEmptyClause _ = True
+    ) form)
 
 -- | Upraszcza wedle mozliwosci wyrazenie CNF,
 -- | jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
@@ -216,24 +215,38 @@ substitudeVar var val = modifyAllVars
 type Interpretation = [(Char, TriVal)]
 
 
--- satDPLL :: Intepretation -> Logic -> Maybe Intepretation
 -- | Glowny silnik rozwiazywania problemu SAT przy uzyciu heurystyk
 -- | zgodnie z algorytmem DPLL dostosowanym do logiki LSB3
-satDPLL :: ([Elem] -> [Elem]) -> CNF -> Bool
-satDPLL se expr =
+satDPLL :: Interpretation -> ([Elem] -> [Elem]) -> CNF -> Maybe Interpretation
+satDPLL hist se expr =
   case isSimplified expr' of
-    Right x -> x == TrueV
+    Right x -> if x == TrueV then Just (hist++histheur) else Nothing
     Left var ->
       let
         trueGuess = simplifyCNF' (substitudeVar var TrueV expr)
         neitherGuess = simplifyCNF' (substitudeVar var Neither expr)
         falseGuess = simplifyCNF' (substitudeVar var FalseV expr)
-      in satDPLL' trueGuess || satDPLL' neitherGuess || satDPLL' falseGuess
+      in satDPLL' (addHist var TrueV) trueGuess
+         <|> satDPLL' (addHist var Neither) neitherGuess
+         <|> satDPLL' (addHist var FalseV) falseGuess
    where
-     expr' = simplifyCNF' . literalElimination . unitPropagation $ expr
+     (histheur, c) = composeHeuristics literalElimination unitPropagation expr
+     expr' = simplifyCNF' c
      simplifyCNF' = simplifyCNF se
-     satDPLL' = satDPLL se
+     satDPLL' h = satDPLL h se
+     addHist var val = (var,val):hist
 
+composeHeuristics :: (CNF -> (Interpretation, CNF))
+                  -> (CNF -> (Interpretation, CNF))
+                  -> CNF
+                  -> (Interpretation, CNF)
+composeHeuristics f g cnf =
+  let
+    (res1, c) = g cnf
+    (res2, c') = f c
+  in (res1++res2, c')
+
+{-
 -- | Silnik sluzacy do rozwiazywania problemu SAT
 -- | przy uzyciu naiwnego algorytmu prob i bledow
 satNaive :: ([Elem] -> [Elem]) -> CNF -> Bool
@@ -251,20 +264,37 @@ satNaive se expr =
      simplifyCNF' = simplifyCNF se
      satNaive' = satNaive se
 
-
-xD :: Maybe x -> x
-xD (Just x) = x
-xD _ = error "maybe fail"
+-}
 
 
-runSat :: ([Elem] -> [Elem]) -> Logic -> Maybe Bool
-runSat f = fmap (satDPLL f) . convertToCnf
+data Error =
+    ParseFailure
+  | CNFConversionFail
+  | NoInterpretationFound
+  | TautologyFail Interpretation
+  deriving (Show, Eq)
+
+throwOnNothing :: Error -> Maybe a -> Either Error a
+throwOnNothing _ (Just a) = Right a
+throwOnNothing e _ = Left e
+
+type SatResult = Either Error Interpretation
+type TautResult = Either Error ()
+
+runSat :: ([Elem] -> [Elem]) -> Logic -> SatResult
+runSat f = (>>= throwOnNothing NoInterpretationFound) . fmap (satDPLL [] f) . throwOnNothing CNFConversionFail . convertToCnf
 
 
-runSatPDPLL, runSatTDPLL :: Logic -> Bool
-runSatPDPLL = xD . runSat simplifyElems
-runSatTDPLL = xD . runSat simplifyElemsT
+runSatPDPLL, runSatTDPLL :: Logic -> SatResult
+runSatPDPLL = runSat simplifyElems
+runSatTDPLL = runSat simplifyElemsT
 
-runTautPDPLL, runTautTDPLL :: Logic -> Bool
-runTautPDPLL = (==False) . runSatPDPLL . Not
-runTautTDPLL = (==False) . runSatTDPLL . Not
+
+satToTautRes :: SatResult -> TautResult
+satToTautRes (Left NoInterpretationFound) = Right ()
+satToTautRes (Left x) = Left x
+satToTautRes (Right x) = Left . TautologyFail $ x
+
+runTautPDPLL, runTautTDPLL :: Logic -> TautResult
+runTautPDPLL = satToTautRes . runSatPDPLL . Not
+runTautTDPLL = satToTautRes . runSatTDPLL . Not

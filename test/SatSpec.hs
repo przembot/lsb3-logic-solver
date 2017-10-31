@@ -1,6 +1,7 @@
 module SatSpec (spec) where
 
 import Test.Hspec
+import Data.Either (isRight)
 
 import Logic
 import SAT
@@ -51,25 +52,25 @@ unsatFormulas = map Not tautFormulas
 nats :: [Int]
 nats = 1 : map (+1) nats
 
-shouldSat, shouldNotSat :: (Logic -> Bool) -- ^ solver
+shouldSat, shouldNotSat :: (Logic -> SatResult) -- ^ solver
                         -> Spec
 shouldSat sat = mapM_ (\(f, num) ->
-                  it ("should sat "++(show num)) $ sat f `shouldBe` True
-                      ) $ zip (tautFormulas++satFormulas) nats
+  it ("should sat "++(show num)) $ isRight (sat f) `shouldBe` True
+  ) $ zip (tautFormulas++satFormulas) nats
 
 shouldNotSat sat = mapM_ (\(f, num) ->
-                  it ("should unsat "++(show num)) $ sat f `shouldBe` False
-                      ) $ zip unsatFormulas nats
+  it ("should unsat "++(show num)) $ isRight (sat f) `shouldBe` False
+  ) $ zip unsatFormulas nats
 
-shouldSatTaut :: [Logic] -> (Logic -> Bool) -> Spec
+shouldSatTaut :: [Logic] -> (Logic -> TautResult) -> Spec
 shouldSatTaut set sat = mapM_ (\(f, num) ->
-                        it ("should sat (taut) "++(show num)) $ sat f `shouldBe` True
-                        ) $ zip set nats
+  it ("should sat (taut) "++(show num)) $ isRight (sat f) `shouldBe` True
+  ) $ zip set nats
 
-shouldSatNoTaut :: [Logic] -> (Logic -> Bool) -> Spec
+shouldSatNoTaut :: [Logic] -> (Logic -> TautResult) -> Spec
 shouldSatNoTaut forms sat = mapM_ (\(f, num) ->
-                      it ("should sat (no taut) "++(show num)) $ sat f `shouldBe` False
-                        ) $ zip forms nats
+  it ("should sat (no taut) "++(show num)) $ isRight (sat f) `shouldBe` False
+  ) $ zip forms nats
 
 spec :: Spec
 spec = do
