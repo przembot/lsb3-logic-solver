@@ -41,9 +41,7 @@ stripPolarities :: CNF -> HashMap Char BoolT
 stripPolarities = HM.mapMaybe id -- catMaybes
                   . foldl updateHMData HM.empty
                   . mapMaybe (fmap polToVPol . traverse sequence . fmap (fmap stripVar))
-                  . concatMap (\case
-                                  Pure l -> map Pure l
-                                  NotE l -> map NotE l)
+                  . concatMap sequence
                   . concat
 
 -- | Zwraca odpowiednie podstawienie przy daniej polaryzacji zmiennej
@@ -66,17 +64,16 @@ literalElimination form =
     ) form
 
 -- mozliwa optymalizacja, wyrzucic subs?
-isUnitClause :: Negable [Elem] -> Maybe (Char, TriVal)
-isUnitClause (Pure [Pure (VarE x)]) = Just (x, curry subs True True)
-isUnitClause (Pure [NotE (VarE x)]) = Just (x, curry subs True False)
-isUnitClause (NotE [Pure (VarE x)]) = Just (x, curry subs False True)
-isUnitClause (NotE [NotE (VarE x)]) = Just (x, curry subs False False)
+isUnitClause :: [Negable [Elem]] -> Maybe (Char, TriVal)
+isUnitClause [Pure [Pure (VarE x)]] = Just (x, curry subs True True)
+isUnitClause [Pure [NotE (VarE x)]] = Just (x, curry subs True False)
+isUnitClause [NotE [Pure (VarE x)]] = Just (x, curry subs False True)
+isUnitClause [NotE [NotE (VarE x)]] = Just (x, curry subs False False)
 isUnitClause _ = Nothing
 
 assignments :: CNF -> HashMap Char TriVal
 assignments = HM.fromList
             . mapMaybe isUnitClause
-            . concat
 
 -- | Podstawia wartosci za zmienne wystepujace samodzielnie
 unitPropagation :: CNF -> CNF
@@ -90,8 +87,8 @@ unitPropagation form =
     ) form
 
 isNonEmptyClause :: Clause -> Bool
-isNonEmptyClause [Pure []] = False
-isNonEmptyClause [NotE []] = False
+isNonEmptyClause [Pure []] = False -- wewnatrz jest falsz
+isNonEmptyClause [NotE []] = False -- j/w
 isNonEmptyClause [] = False
 isNonEmptyClause _ = True
 

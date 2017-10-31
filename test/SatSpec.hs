@@ -6,15 +6,20 @@ import Logic
 import SAT
 
 -- | Formuly bedace tautologiami LSB3_x
+-- | przepisane w referatu
 tautFormulas :: [Logic]
 tautFormulas = [
-    Not $ C (BinForm And (Var 'a') (Not (Var 'a')))
-  , BinForm Impl (C (BinForm Impl (Var 'a') (Var 'b')))
+    BinForm Impl (C (BinForm Impl (Var 'a') (Var 'b')))
                  (BinForm Impl (C (Var 'a')) (C (Var 'b')))
+  , BinForm Impl (C (Var 'a')) (Not (C (Not (Var 'a'))))
+  , BinForm Equiv (C (BinForm And (Var 'a') (Var 'b')))
+                  (BinForm And (C (Var 'a')) (C (Var 'b')))
+  , BinForm Impl (BinForm Or (C (Var 'a')) (C (Var 'b')))
+                 (C (BinForm Or (Var 'a') (Var 'b')))
+  , BinForm Equiv (C (Var 'a')) (C (Not (Not (Var 'a'))))
   , Not (C (BinForm And (Var 'a') (Not (Var 'a'))))
   , BinForm Impl (C (BinForm And (Var 'a') (Not (Var 'a'))))
                  (C (Var 'b'))
-  , BinForm Equiv (C (Var 'a')) (C (Not (Not (Var 'a'))))
   ]
 
 -- | Formuly bedace tautologiami w LSB3_T
@@ -37,8 +42,8 @@ satFormulas = [
   ]
 
 
--- | Formuly niespelnialne w LSB3_t
--- czyli negacje tautologii z LSB3_t
+-- | Formuly niespelnialne w LSB3_x
+-- czyli negacje tautologii z LSB3_x
 unsatFormulas :: [Logic]
 unsatFormulas = map Not tautFormulas
 
