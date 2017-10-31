@@ -1,5 +1,10 @@
-{-# LANGUAGE LambdaCase #-}
-module SAT where
+module SAT (
+    runSat
+  , runSatTDPLL
+  , runSatPDPLL
+  , runTautTDPLL
+  , runTautPDPLL
+  ) where
 
 import Data.Maybe (mapMaybe, listToMaybe)
 import Data.HashMap.Strict (HashMap)
@@ -9,16 +14,20 @@ import Logic
 import CNF
 
 
+-- | Jezeli atom jest zmienna, to podaj nazwe zmiennej
 stripVar :: Atom -> Maybe Char
 stripVar (VarE x) = Just x
 stripVar _ = Nothing
 
+-- | Porownanie polarnosci - jezeli sa zgodne, to zapamietuje polarnosc.
+-- | W przeciwnym przypadku zapominam.
+-- | Nothing oznacza pomieszane polarnosci.
 comparePols :: Maybe BoolT -> Maybe BoolT -> Maybe BoolT
 comparePols (Just x) (Just y) = if x == y then Just x
                                           else Nothing
 comparePols _ _ = Nothing
 
--- | Nothing oznacza pomieszane polarnosci
+-- | Aktualizacja danych w mapie opisujacej polarnosci zmiennych
 updateHMData :: HashMap Char (Maybe BoolT)
              -> VarPol -> HashMap Char (Maybe BoolT)
 updateHMData hm (VarPol (x, pols)) =
@@ -26,9 +35,13 @@ updateHMData hm (VarPol (x, pols)) =
     Nothing -> HM.insert x (Just pols) hm
     (Just oldpols) -> HM.insert x (comparePols oldpols (pure pols)) hm
 
+-- | Polarnosc zewnetrzna i wewnetrzna zmiennej
 type BoolT = (Bool, Bool)
+
+-- | Wrapper na polarnosc i nazwe zmiennej
 newtype VarPol = VarPol (Char, BoolT)
 
+-- | Konwersja struktury zawierajaca zmienna oraz jej polarnosc
 polToVPol :: Negable (Negable Char) -> VarPol
 polToVPol (Pure (Pure x)) = VarPol (x, (True, True))
 polToVPol (Pure (NotE x)) = VarPol (x, (True, False))
@@ -44,7 +57,7 @@ stripPolarities = HM.mapMaybe id -- catMaybes
                   . concatMap sequence
                   . concat
 
--- | Zwraca odpowiednie podstawienie przy daniej polaryzacji zmiennej
+-- | Zwraca odpowiednie podstawienie przy danej polaryzacji zmiennej
 subs :: BoolT -> TriVal
 subs (True, True) = TrueV
 subs (False, True) = FalseV
@@ -52,7 +65,8 @@ subs (True, False) = FalseV
 subs (False, False) = TrueV
 
 
--- | Podstaw za zmienna bedaca w jednej polarnosci odpowiednia stala wartosc
+-- | Podstaw za zmienna bedaca w jednej polarnosci w calym wyrazeniu
+-- | odpowiednia stala wartosc
 literalElimination :: CNF -> CNF
 literalElimination form =
   let
@@ -63,14 +77,18 @@ literalElimination form =
                   _ -> VarE x
     ) form
 
--- mozliwa optymalizacja, wyrzucic subs?
-isUnitClause :: [Negable [Elem]] -> Maybe (Char, TriVal)
+
+-- | Czy klauzula zawiera tylko jedna zmienna - i jezli tak to jaka oraz
+-- | co za nia nalezy podstawic
+isUnitClause :: Clause -> Maybe (Char, TriVal)
 isUnitClause [Pure [Pure (VarE x)]] = Just (x, curry subs True True)
 isUnitClause [Pure [NotE (VarE x)]] = Just (x, curry subs True False)
 isUnitClause [NotE [Pure (VarE x)]] = Just (x, curry subs False True)
 isUnitClause [NotE [NotE (VarE x)]] = Just (x, curry subs False False)
 isUnitClause _ = Nothing
 
+-- | Mapa zawierajaca informacje o mozliwych podstawieniach przy uzyciu
+-- | Unit Propagation
 assignments :: CNF -> HashMap Char TriVal
 assignments = HM.fromList
             . mapMaybe isUnitClause
@@ -86,13 +104,16 @@ unitPropagation form =
                   _ -> VarE x
     ) form
 
+-- | Czy klauzula jest niepusta
 isNonEmptyClause :: Clause -> Bool
 isNonEmptyClause [Pure []] = False -- wewnatrz jest falsz
 isNonEmptyClause [NotE []] = False -- j/w
 isNonEmptyClause [] = False
 isNonEmptyClause _ = True
 
-simplifyCNF :: ([Elem] -> [Elem])
+-- | Upraszcza wedle mozliwosci wyrazenie CNF,
+-- | jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
+simplifyCNF :: ([Elem] -> [Elem]) -- ^ funkcja redukujaca wartosci wewnatrz funktora, zalezna od wybranego typu logiki T lub P
             -> CNF -> CNF
 simplifyCNF se = foldl reduceClauses []
                . map (simplifyClause se)
@@ -107,9 +128,12 @@ reduceClauses acc [NotE [Pure (Lit x)]] = filterElemF acc (notO x)
 reduceClauses acc [NotE [NotE (Lit x)]] = filterElemF acc (notO . notI $ x)
 reduceClauses acc a = a:acc
 
+-- | Wyrazenie CNF oznaczajace nieudana probe podstawien wartosci
+failSat :: CNF
 failSat = [[Pure [Pure (Lit FalseV)]]]
 
 
+-- | Funkcja upraszczajaca klauzule
 simplifyClause :: ([Elem] -> [Elem])
                -> Clause -> Clause
 simplifyClause se = foldl reduceClause []
@@ -131,6 +155,8 @@ filterElemF :: CNF -> TriVal -> CNF
 filterElemF acc TrueV = acc
 filterElemF _ _ = failSat
 
+-- | Klauzula oznaczajaca udane podstawienie wewnatrz niej
+trueClause :: Clause
 trueClause = [Pure [Pure (Lit TrueV)]]
 
 simplifyElems :: [Elem] -> [Elem]
@@ -185,7 +211,14 @@ substitudeVar var val = modifyAllVars
                                              else VarE v
                           )
 
+
+-- | Typ reprezentujacy podstawienia dajace spelnialna formule
+type Interpretation = [(Char, TriVal)]
+
+
 -- satDPLL :: Intepretation -> Logic -> Maybe Intepretation
+-- | Glowny silnik rozwiazywania problemu SAT przy uzyciu heurystyk
+-- | zgodnie z algorytmem DPLL dostosowanym do logiki LSB3
 satDPLL :: ([Elem] -> [Elem]) -> CNF -> Bool
 satDPLL se expr =
   case isSimplified expr' of
@@ -200,6 +233,24 @@ satDPLL se expr =
      expr' = simplifyCNF' . literalElimination . unitPropagation $ expr
      simplifyCNF' = simplifyCNF se
      satDPLL' = satDPLL se
+
+-- | Silnik sluzacy do rozwiazywania problemu SAT
+-- | przy uzyciu naiwnego algorytmu prob i bledow
+satNaive :: ([Elem] -> [Elem]) -> CNF -> Bool
+satNaive se expr =
+  case isSimplified expr' of
+    Right x -> x == TrueV
+    Left var ->
+      let
+        trueGuess = simplifyCNF' (substitudeVar var TrueV expr)
+        neitherGuess = simplifyCNF' (substitudeVar var Neither expr)
+        falseGuess = simplifyCNF' (substitudeVar var FalseV expr)
+      in satNaive' trueGuess || satNaive' neitherGuess || satNaive' falseGuess
+   where
+     expr' = simplifyCNF' expr
+     simplifyCNF' = simplifyCNF se
+     satNaive' = satNaive se
+
 
 xD :: Maybe x -> x
 xD (Just x) = x

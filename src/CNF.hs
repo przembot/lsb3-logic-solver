@@ -124,11 +124,13 @@ unNegable :: Negable x -> x
 unNegable (Pure x) = x
 unNegable (NotE x) = x
 
+-- | Datatype oznaczajacy, ze cos moze byc zanegowane
 data Negable x =
     Pure x
   | NotE x
   deriving (Show, Eq, Functor, Foldable, Traversable)
 
+-- | Pojedynczy atom wystepujacy w wyrazeniu CNF
 data Atom =
     Lit TriVal
   | VarE Char
@@ -145,7 +147,7 @@ filterVars :: [Atom] -> String
 filterVars = mapMaybe getCharFromAtom
 
 modifyAllAtoms :: (Atom -> Atom) -> CNF -> CNF
-modifyAllAtoms f = map (map (fmap (map (fmap f))))
+modifyAllAtoms = map . map . fmap . map . fmap
 
 modifyAllVars :: (Char -> Atom) -> CNF -> CNF
 modifyAllVars f = modifyAllAtoms
