@@ -25,6 +25,7 @@ executable thesis
                      , split
                      , text
                      , hsqml
+                     , parsec
 
 
 test-suite test-thesis

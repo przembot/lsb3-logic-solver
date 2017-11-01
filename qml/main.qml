@@ -70,6 +70,7 @@ Window {
     TextArea {
       id: resultarea
       width: 300
+      readOnly: true
       text: "Wyniki operacji.."
 
     }
