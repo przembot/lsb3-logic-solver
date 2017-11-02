@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Parser (
-  parseExp
+  parseLogic
   ) where
 
 import Text.Parsec
@@ -74,5 +74,5 @@ prefix name fun = Prefix (string name >> return fun)
 parens :: Parser Logic -> Parser Logic
 parens = between (char '(') (char ')')
 
-parseExp :: Text -> Either ParseError Logic
-parseExp = parse expr "" . T.filter (/=' ')
+parseLogic :: Text -> Either ParseError Logic
+parseLogic = parse expr "" . T.filter (/=' ')

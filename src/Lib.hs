@@ -3,6 +3,7 @@ module Lib (
     module Logic
   , module CNF
   , module SAT
+  , module Parser
   ) where
 
 import Data.Text (Text)

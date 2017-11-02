@@ -15,6 +15,8 @@ import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Control.Applicative ((<|>))
 
+import Text.Parsec (ParseError)
+
 import Logic
 import CNF
 
@@ -24,6 +26,7 @@ stripVar :: Atom -> Maybe Char
 stripVar (VarE x) = Just x
 stripVar _ = Nothing
 
+
 -- | Porownanie polarnosci - jezeli sa zgodne, to zapamietuje polarnosc.
 -- | W przeciwnym przypadku zapominam.
 -- | Nothing oznacza pomieszane polarnosci.
@@ -31,6 +34,7 @@ comparePols :: Maybe BoolT -> Maybe BoolT -> Maybe BoolT
 comparePols (Just x) (Just y) = if x == y then Just x
                                           else Nothing
 comparePols _ _ = Nothing
+
 
 -- | Aktualizacja danych w mapie opisujacej polarnosci zmiennych
 updateHMData :: HashMap Char (Maybe BoolT)
@@ -40,11 +44,14 @@ updateHMData hm (VarPol (x, pols)) =
     Nothing -> HM.insert x (Just pols) hm
     (Just oldpols) -> HM.insert x (comparePols oldpols (pure pols)) hm
 
+
 -- | Polarnosc zewnetrzna i wewnetrzna zmiennej
 type BoolT = (Bool, Bool)
 
+
 -- | Wrapper na polarnosc i nazwe zmiennej
 newtype VarPol = VarPol (Char, BoolT)
+
 
 -- | Konwersja struktury zawierajaca zmienna oraz jej polarnosc
 polToVPol :: Negable (Negable Char) -> VarPol
@@ -62,6 +69,7 @@ stripPolarities =   HM.map subs
                   . mapMaybe (fmap polToVPol . traverse sequence . fmap (fmap stripVar))
                   . concatMap sequence
                   . concat
+
 
 -- | Zwraca odpowiednie podstawienie przy danej polaryzacji zmiennej
 subs :: BoolT -> TriVal
@@ -93,11 +101,13 @@ isUnitClause [NotE [Pure (VarE x)]] = Just (x, curry subs False True)
 isUnitClause [NotE [NotE (VarE x)]] = Just (x, curry subs False False)
 isUnitClause _ = Nothing
 
+
 -- | Mapa zawierajaca informacje o mozliwych podstawieniach przy uzyciu
 -- | Unit Propagation
 assignments :: CNF -> HashMap Char TriVal
 assignments = HM.fromList
             . mapMaybe isUnitClause
+
 
 -- | Podstawia wartosci za zmienne wystepujace samodzielnie
 unitPropagation :: CNF -> (Interpretation, CNF)
@@ -109,6 +119,7 @@ unitPropagation form =
                   Just val -> Lit val
                   _ -> VarE x
     ) form)
+
 
 -- | Upraszcza wedle mozliwosci wyrazenie CNF,
 -- | jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
@@ -126,6 +137,7 @@ reduceClauses acc [Pure [NotE (Lit x)]] = filterElemF acc (notI x)
 reduceClauses acc [NotE [Pure (Lit x)]] = filterElemF acc (notO x)
 reduceClauses acc [NotE [NotE (Lit x)]] = filterElemF acc (notO . notI $ x)
 reduceClauses acc a = a:acc
+
 
 -- | Wyrazenie CNF oznaczajace nieudana probe podstawien wartosci
 failSat :: CNF
@@ -194,6 +206,7 @@ simplifyElemT (s, acc) a = (s, a:acc)
 findVar :: CNF -> Maybe Char
 findVar = listToMaybe . filterVars . stripAtoms
 
+
 -- | Jezeli w wyrazeniu znajduje sie wolna zmienna, zwraca ja
 -- | jezeli nie, to zwraca wartosc calego wyrazenia
 isSimplified :: CNF -> Either Char TriVal
@@ -236,6 +249,8 @@ satDPLL hist se expr =
      satDPLL' h = satDPLL h se
      addHist var val = (var,val):hist
 
+
+-- | Kompozycja funkcji heurystycznych uzywanych w algorytmie DPLL
 composeHeuristics :: (CNF -> (Interpretation, CNF))
                   -> (CNF -> (Interpretation, CNF))
                   -> CNF
@@ -267,8 +282,9 @@ satNaive se expr =
 -}
 
 
+-- | Opakowanie na bledy mogace wystapic przy probie uzycia programu
 data Error =
-    ParseFailure
+    ParseFailure ParseError
   | CNFConversionFail
   | NoInterpretationFound
   | TautologyFail Interpretation
@@ -294,6 +310,7 @@ satToTautRes :: SatResult -> TautResult
 satToTautRes (Left NoInterpretationFound) = Right ()
 satToTautRes (Left x) = Left x
 satToTautRes (Right x) = Left . TautologyFail $ x
+
 
 runTautPDPLL, runTautTDPLL :: Logic -> TautResult
 runTautPDPLL = satToTautRes . runSatPDPLL . Not
