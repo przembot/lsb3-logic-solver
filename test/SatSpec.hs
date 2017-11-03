@@ -76,19 +76,19 @@ spec :: Spec
 spec = do
   describe "funkcja sat powinna spelniac" $ do
     describe "lsb3_p" $
-      shouldSat runSatPDPLL
+      shouldSat (uniRunSat DPLL LSB3P)
     describe "lsb3_t" $
-      shouldSat runSatTDPLL
+      shouldSat (uniRunSat DPLL LSB3T)
   describe "funkcja sat nie powinna spelniac" $ do
     describe "lsb3_p" $
-      shouldNotSat runSatPDPLL
+      shouldNotSat (uniRunSat DPLL LSB3P)
     describe "lsb3_t" $
-      shouldNotSat runSatTDPLL
+      shouldNotSat (uniRunSat DPLL LSB3T)
   describe "funkcja sat (taut) powinna spelniac" $ do
     describe "lsb3_p" $
-      shouldSatTaut tautFormulas runTautPDPLL
+      shouldSatTaut tautFormulas (uniRunTaut DPLL LSB3P)
     describe "lsb3_t" $
-      shouldSatTaut (tautFormulas ++ tautTFormulas) runTautTDPLL
+      shouldSatTaut (tautFormulas ++ tautTFormulas) (uniRunTaut DPLL LSB3T)
   describe "funkcja sat (taut) nie powinna spelniac" $ do
     describe "lsb3_p" $
-      shouldSatNoTaut tautTFormulas runTautPDPLL
+      shouldSatNoTaut tautTFormulas (uniRunTaut DPLL LSB3P)

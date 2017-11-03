@@ -43,14 +43,14 @@ hugeTautManyVars = foldl1 (BinForm And) . zipWith (\(a,b) form ->
 
 genTestCase :: Logic -> [Benchmark]
 genTestCase expr =
-  [ bench "LSB3T naiveSolverSat" $ whnf runNaiveSatT expr
-  , bench "LSB3T naiveSolverTaut" $ whnf runNaiveTautT expr
-  , bench "LSB3P naiveSolverSat" $ whnf runNaiveSatP expr
-  , bench "LSB3P naiveSolverTaut" $ whnf runNaiveTautP expr
-  , bench "LSB3T DPLLSolverSat" $ whnf runSatTDPLL expr
-  , bench "LSB3T DPLLSolverTaut" $ whnf runTautTDPLL expr
-  , bench "LSB3P DPLLSolverSat" $ whnf runSatPDPLL expr
-  , bench "LSB3P DPLLSolverTaut" $ whnf runTautPDPLL expr
+  [ bench "LSB3T naiveSolverSat" $ whnf (uniRunSat Naive LSB3T) expr
+  , bench "LSB3T naiveSolverTaut" $ whnf (uniRunTaut Naive LSB3T) expr
+  , bench "LSB3P naiveSolverSat" $ whnf (uniRunSat Naive LSB3P) expr
+  , bench "LSB3P naiveSolverTaut" $ whnf (uniRunTaut Naive LSB3P) expr
+  , bench "LSB3T DPLLSolverSat" $ whnf (uniRunSat DPLL LSB3T) expr
+  , bench "LSB3T DPLLSolverTaut" $ whnf (uniRunTaut DPLL LSB3T) expr
+  , bench "LSB3P DPLLSolverSat" $ whnf (uniRunSat DPLL LSB3P) expr
+  , bench "LSB3P DPLLSolverTaut" $ whnf (uniRunTaut DPLL LSB3P) expr
   ]
 
 main :: IO ()

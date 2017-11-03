@@ -1,14 +1,8 @@
 module SAT (
-    runSat
-  , runSatTDPLL
-  , runSatPDPLL
-  , runTautTDPLL
-  , runTautPDPLL
-  , runNaiveSat
-  , runNaiveSatT
-  , runNaiveSatP
-  , runNaiveTautT
-  , runNaiveTautP
+    uniRunSat
+  , uniRunTaut
+  , LogicType (..)
+  , SolverType (..)
   , Error (..)
   , Interpretation
   , SatResult
@@ -311,28 +305,36 @@ satToTautRes (Right x) = Left . TautologyFail $ x
 
 
 runSat :: ([Elem] -> [Elem]) -> Logic -> SatResult
-runSat f = (>>= throwOnNothing NoInterpretationFound) . fmap (satDPLL [] f) . throwOnNothing CNFConversionFail . convertToCnf
-
-
-runSatPDPLL, runSatTDPLL :: Logic -> SatResult
-runSatPDPLL = runSat simplifyElems
-runSatTDPLL = runSat simplifyElemsT
-
-
-runTautPDPLL, runTautTDPLL :: Logic -> TautResult
-runTautPDPLL = satToTautRes . runSatPDPLL . Not
-runTautTDPLL = satToTautRes . runSatTDPLL . Not
+runSat f = (>>= throwOnNothing NoInterpretationFound)
+         . fmap (satDPLL [] f)
+         . throwOnNothing CNFConversionFail
+         . convertToCnf
 
 
 runNaiveSat :: ([Elem] -> [Elem]) -> Logic -> SatResult
-runNaiveSat f = (>>= throwOnNothing NoInterpretationFound) . fmap (satNaive [] f) . throwOnNothing CNFConversionFail . convertToCnf
+runNaiveSat f = (>>= throwOnNothing NoInterpretationFound)
+              . fmap (satNaive [] f)
+              . throwOnNothing CNFConversionFail
+              . convertToCnf
 
 
-runNaiveSatP, runNaiveSatT:: Logic -> SatResult
-runNaiveSatP = runNaiveSat simplifyElems
-runNaiveSatT = runNaiveSat simplifyElemsT
+data LogicType = LSB3T
+               | LSB3P
+               deriving Eq
+
+data SolverType = Naive
+                | DPLL
+                deriving Eq
+
+uniLogicMapper :: LogicType -> [Elem] -> [Elem]
+uniLogicMapper LSB3T = simplifyElemsT
+uniLogicMapper LSB3P = simplifyElems
 
 
-runNaiveTautP, runNaiveTautT:: Logic -> TautResult
-runNaiveTautP = satToTautRes . runNaiveSatP . Not
-runNaiveTautT = satToTautRes . runNaiveSatT . Not
+uniRunSat :: SolverType -> LogicType -> Logic -> SatResult
+uniRunSat Naive = runNaiveSat . uniLogicMapper
+uniRunSat DPLL = runSat . uniLogicMapper
+
+
+uniRunTaut :: SolverType -> LogicType -> Logic -> TautResult
+uniRunTaut s l = satToTautRes . uniRunSat s l . Not

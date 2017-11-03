@@ -31,10 +31,10 @@ uniRaport fr rest resp =
             "Logika LSB3_P:\n", fr resp]
 
 satHandler :: Text -> LSBSatResult
-satHandler = uniHandler runSatTDPLL runSatPDPLL LSBSatResult
+satHandler = uniHandler (uniRunSat DPLL LSB3T) (uniRunSat DPLL LSB3P) LSBSatResult
 
 tautHandler :: Text -> LSBTautResult
-tautHandler = uniHandler runTautTDPLL runTautPDPLL LSBTautResult
+tautHandler = uniHandler (uniRunTaut DPLL LSB3T) (uniRunTaut DPLL LSB3P) LSBTautResult
 
 satRaport :: LSBSatResult -> Text
 satRaport (LSBSatResult (rest, resp)) = uniRaport satSingleReport rest resp
