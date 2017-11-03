@@ -13,19 +13,28 @@ build-type:          Simple
 cabal-version:       >=1.10 && < 1.25
 extra-source-files:  README.md
 
-executable thesis
+library
   hs-source-dirs:      src
-  main-is:             Main.hs
   default-language:    Haskell2010
-  ghc-options:         -Wall
-  other-modules:       Logic, CNF, SAT, Lib, Parser
+  ghc-options:         -Wall -O2
+  exposed-modules:     Logic, CNF, SAT, Lib, Parser
   build-depends:       base >= 4.7 && < 5
                      , unordered-containers
                      , containers
                      , split
                      , text
-                     , hsqml
                      , parsec
+
+
+executable thesis
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  ghc-options:         -Wall -O2
+  build-depends:       base >= 4.7 && < 5
+                     , thesis
+                     , text
+                     , hsqml
 
 
 test-suite test-thesis
@@ -38,3 +47,13 @@ test-suite test-thesis
                      , thesis
                      , hspec
                      -- , QuickCheck
+
+benchmark bench-thesis
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      bench
+  main-is:             Benchmark.hs
+  build-depends:       base
+                     , thesis
+                     , criterion
+                     , random
+  ghc-options:         -Wall -O2

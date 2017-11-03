@@ -4,6 +4,11 @@ module SAT (
   , runSatPDPLL
   , runTautTDPLL
   , runTautPDPLL
+  , runNaiveSat
+  , runNaiveSatT
+  , runNaiveSatP
+  , runNaiveTautT
+  , runNaiveTautP
   , Error (..)
   , Interpretation
   , SatResult
@@ -261,25 +266,27 @@ composeHeuristics f g cnf =
     (res2, c') = f c
   in (res1++res2, c')
 
-{-
+
 -- | Silnik sluzacy do rozwiazywania problemu SAT
 -- | przy uzyciu naiwnego algorytmu prob i bledow
-satNaive :: ([Elem] -> [Elem]) -> CNF -> Bool
-satNaive se expr =
+satNaive :: Interpretation -> ([Elem] -> [Elem]) -> CNF -> Maybe Interpretation
+satNaive hist se expr =
   case isSimplified expr' of
-    Right x -> x == TrueV
+    Right x -> if x == TrueV then (Just hist) else Nothing
     Left var ->
       let
         trueGuess = simplifyCNF' (substitudeVar var TrueV expr)
         neitherGuess = simplifyCNF' (substitudeVar var Neither expr)
         falseGuess = simplifyCNF' (substitudeVar var FalseV expr)
-      in satNaive' trueGuess || satNaive' neitherGuess || satNaive' falseGuess
+      in satNaive' (addHist var TrueV) trueGuess
+         <|> satNaive' (addHist var Neither) neitherGuess
+         <|> satNaive' (addHist var FalseV) falseGuess
    where
      expr' = simplifyCNF' expr
      simplifyCNF' = simplifyCNF se
-     satNaive' = satNaive se
+     satNaive' h = satNaive h se
+     addHist var val = (var,val):hist
 
--}
 
 
 -- | Opakowanie na bledy mogace wystapic przy probie uzycia programu
@@ -297,6 +304,12 @@ throwOnNothing e _ = Left e
 type SatResult = Either Error Interpretation
 type TautResult = Either Error ()
 
+satToTautRes :: SatResult -> TautResult
+satToTautRes (Left NoInterpretationFound) = Right ()
+satToTautRes (Left x) = Left x
+satToTautRes (Right x) = Left . TautologyFail $ x
+
+
 runSat :: ([Elem] -> [Elem]) -> Logic -> SatResult
 runSat f = (>>= throwOnNothing NoInterpretationFound) . fmap (satDPLL [] f) . throwOnNothing CNFConversionFail . convertToCnf
 
@@ -306,12 +319,20 @@ runSatPDPLL = runSat simplifyElems
 runSatTDPLL = runSat simplifyElemsT
 
 
-satToTautRes :: SatResult -> TautResult
-satToTautRes (Left NoInterpretationFound) = Right ()
-satToTautRes (Left x) = Left x
-satToTautRes (Right x) = Left . TautologyFail $ x
-
-
 runTautPDPLL, runTautTDPLL :: Logic -> TautResult
 runTautPDPLL = satToTautRes . runSatPDPLL . Not
 runTautTDPLL = satToTautRes . runSatTDPLL . Not
+
+
+runNaiveSat :: ([Elem] -> [Elem]) -> Logic -> SatResult
+runNaiveSat f = (>>= throwOnNothing NoInterpretationFound) . fmap (satNaive [] f) . throwOnNothing CNFConversionFail . convertToCnf
+
+
+runNaiveSatP, runNaiveSatT:: Logic -> SatResult
+runNaiveSatP = runNaiveSat simplifyElems
+runNaiveSatT = runNaiveSat simplifyElemsT
+
+
+runNaiveTautP, runNaiveTautT:: Logic -> TautResult
+runNaiveTautP = satToTautRes . runNaiveSatP . Not
+runNaiveTautT = satToTautRes . runNaiveSatT . Not
