@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module ParserSpec (spec) where
 
 import Test.Hspec
@@ -12,6 +13,7 @@ prop_parse_show :: Logic -> Bool
 prop_parse_show expr = (parseLogic . pack . filter (/= ' ') . show) expr == Right expr
 
 impl = BinForm Impl
+equiv = BinForm Equiv
 
 spec :: Spec
 spec = do
@@ -23,3 +25,5 @@ spec = do
       isRight (parseLogic "C(C(a))") `shouldBe` False
     it "operators are left associative" $
       parseLogic "a -> b -> c" `shouldBe` Right (impl (impl (Var 'a') (Var 'b')) (Var 'c'))
+    it "double negation is parser properly" $
+      parseLogic "C(~~a <-> a)" `shouldBe` Right (C (equiv (Not (Not (Var 'a'))) (Var 'a')))
