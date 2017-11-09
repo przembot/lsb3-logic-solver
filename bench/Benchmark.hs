@@ -1,6 +1,8 @@
 module Main where
 
+import Data.Text.IO as T (readFile)
 import Criterion.Main
+
 import Lib
 
 
@@ -54,8 +56,12 @@ genTestCase expr =
   ]
 
 main :: IO ()
-main =
+main = do
+  (Right bigsample) <- parseLogic <$> T.readFile "bench/bigsample"
+
   defaultMain
-    [ bgroup "sample" (genTestCase hugeTaut)
-    , bgroup "6vars" (genTestCase hugeTautManyVars)
+    [
+    -- bgroup "sample" (genTestCase hugeTaut)
+    -- , bgroup "6vars" (genTestCase hugeTautManyVars)
+      bgroup "bigsample" (genTestCase bigsample)
     ]

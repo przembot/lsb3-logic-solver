@@ -25,5 +25,5 @@ spec = do
       isRight (parseLogic "C(C(a))") `shouldBe` False
     it "operators are left associative" $
       parseLogic "a -> b -> c" `shouldBe` Right (impl (impl (Var 'a') (Var 'b')) (Var 'c'))
-    it "double negation is parser properly" $
+    it "double negation is parsed properly" $
       parseLogic "C(~~a <-> a)" `shouldBe` Right (C (equiv (Not (Not (Var 'a'))) (Var 'a')))

@@ -1,6 +1,7 @@
 module SatSpec (spec) where
 
 import Test.Hspec
+import Test.QuickCheck
 import Data.Either (isRight)
 
 import Logic
@@ -72,6 +73,17 @@ shouldSatNoTaut forms sat = mapM_ (\(f, num) ->
   it ("should sat (no taut) "++(show num)) $ isRight (sat f) `shouldBe` False
   ) $ zip forms nats
 
+
+prop_naive_dpll :: Logic -> Property
+prop_naive_dpll expr =
+  (isRight (uniRunSat Naive LSB3T expr) ==>
+    isRight (uniRunSat DPLL LSB3T expr))
+    .&&.
+  (isRight (uniRunSat DPLL LSB3T expr) ==>
+    isRight (uniRunSat Naive LSB3T expr))
+
+
+
 spec :: Spec
 spec = do
   describe "funkcja sat powinna spelniac" $ do
@@ -92,3 +104,7 @@ spec = do
   describe "funkcja sat (taut) nie powinna spelniac" $ do
     describe "lsb3_p" $
       shouldSatNoTaut tautTFormulas (uniRunTaut DPLL LSB3P)
+
+  describe "dla dowolnego wyrazenia" $ do
+    it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku" $
+      mapSize (const 15) $ property prop_naive_dpll

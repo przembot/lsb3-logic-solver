@@ -151,6 +151,8 @@ simplifyClause se = foldl reduceClause []
 
 
 reduceClause :: Clause -> Negable [Elem] -> Clause
+reduceClause acc (Pure []) = filterElemT acc FalseV
+reduceClause acc (NotE []) = filterElemT acc TrueV
 reduceClause acc (Pure [Pure (Lit x)]) = filterElemT acc x
 reduceClause acc (Pure [NotE (Lit x)]) = filterElemT acc (notI x)
 reduceClause acc (NotE [Pure (Lit x)]) = filterElemT acc (notO x)
@@ -266,7 +268,7 @@ composeHeuristics f g cnf =
 satNaive :: Interpretation -> ([Elem] -> [Elem]) -> CNF -> Maybe Interpretation
 satNaive hist se expr =
   case isSimplified expr' of
-    Right x -> if x == TrueV then (Just hist) else Nothing
+    Right x -> if x == TrueV then Just hist else Nothing
     Left var ->
       let
         trueGuess = simplifyCNF' (substitudeVar var TrueV expr)

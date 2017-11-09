@@ -42,12 +42,12 @@ removeNeg = removeNegO notO
   where
     -- Parametrem funkcji jest funkcja logiczna NOT, stosowana by dla funktora C uzyc innej
     removeNegO :: (TriVal -> TriVal) -> Logic -> Logic
-    removeNegO _ (Not (Not x)) = x
+    removeNegO notX (Not (Not x)) = removeNegO notX x
+    -- wartosc stala
+    removeNegO notX (Not (Const x)) = Const (notX x)
     -- De Morgan
     removeNegO notX (Not (BinForm And x y)) = BinForm Or (removeNegO notX $ Not x) (removeNegO notX $ Not y)
     removeNegO notX (Not (BinForm Or x y)) = BinForm And (removeNegO notX $ Not x) (removeNegO notX $ Not y)
-    -- wartosc stala
-    removeNegO notX (Const x) = Const (notX x)
     -- rekurencja
     removeNegO notX (Not x) = Not (removeNegO notX x)
     removeNegO notX (BinForm op x y) = BinForm op (removeNegO notX x) (removeNegO notX y)
@@ -108,12 +108,6 @@ convertToCnf = run . normalizeToCnf . replaceImpl
     stripElems (BinForm Or x y) = (++) <$> stripElems x <*> stripElems y
     stripElems _ = Nothing -- niepoprawne wyrazenie
 
-
-testSample :: Logic
-testSample = BinForm And (Not $ C $ BinForm And (Var 'a') (Var 'b'))
-                         (C $ BinForm Or (Var 'p') (Var 'q'))
-testSample2 = BinForm Or (Not $ C $ BinForm Or (Var 'a') (Var 'b'))
-                         (Not $ C $ BinForm Or (Var 'p') (Var 'q'))
 
 type CNF = [Clause]
 -- moze inny kontener niz lista? (set? sequence?)

@@ -1,7 +1,13 @@
 {-
    Implementacja logiki LSB3
 -}
-module Logic where
+module Logic (
+    TriVal (..)
+  , BinaryOp (..)
+  , Logic (..)
+  , notO
+  , notI
+  ) where
 
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Gen
@@ -35,6 +41,16 @@ instance Show BinaryOp where
   show Impl = "->"
   show Equiv = "<->"
 
+-- notO - negacja zewnetrzna
+-- notI - negacja wewnetrzna
+notO, notI :: TriVal -> TriVal
+notO TrueV = FalseV
+notO _ = TrueV
+notI TrueV = FalseV
+notI FalseV = TrueV
+notI x = x
+
+
 -- | Reprezentacja wyrazenia
 data Logic =
     Const TriVal
@@ -58,40 +74,25 @@ instance Arbitrary BinaryOp where
   arbitrary = elements [And, Or, Impl, Equiv]
 
 instance Arbitrary Logic where
-  arbitrary = oneof
-    [ Const <$> arbitrary
-    , Var <$> (suchThat arbitrary isLower)
-    , Not <$> arbitrary
-    , BinForm <$> arbitrary <*> arbitrary <*> arbitrary
-    , C <$> sampleLogic
-    ]
-  shrink (BinForm _ x y) = [x, y]
-  shrink (Not x) = [x]
-  shrink (C x) = [x]
-  shrink _ = []
+  arbitrary = sized logic'
 
 
-sampleLogic = oneof
-    [ Const <$> arbitrary
-    , Var <$> (suchThat arbitrary isLower)
-    , Not <$> sampleLogic
-    , BinForm <$> arbitrary <*> sampleLogic <*> sampleLogic
-    ]
-
-sample, sample2 :: Logic
-sample = C $ BinForm Or (Const FalseV) $ BinForm And (Const Neither) (Const Neither)
-sample2 = BinForm And (C $ Var 'q') $ C $ BinForm Or (Var 'p') $ BinForm And (Const Neither) (Const Neither)
-
--- (czy nie zawiera zaglebionego funktora C)
-isValid :: Logic -> Bool
-isValid = const True
+-- | Generator logiki LSB3
+logic' :: Int -> Gen Logic
+logic' 0 = C <$> sampleLogic' 0
+logic' n = oneof [ Not <$> subtree, C <$> sampleLogic' n,
+                   BinForm <$> arbitrary <*> subtree <*> subtree ]
+                     where
+                       subtree = logic' (n `div` 2)
 
 
--- notO - negacja zewnetrzna
--- notI - negacja wewnetrzna
-notO, notI :: TriVal -> TriVal
-notO TrueV = FalseV
-notO _ = TrueV
-notI TrueV = FalseV
-notI FalseV = TrueV
-notI x = x
+-- | Generator logiki pozbawionej funktora C
+sampleLogic' :: Int -> Gen Logic
+sampleLogic' 0 = oneof [ Var <$> suchThat arbitrary isLower]
+sampleLogic' n = oneof [ Not <$> subtree, BinForm <$> arbitrary <*> subtree <*> subtree ]
+                           where
+                             subtree = sampleLogic' (n `div` 2)
+
+
+generateBigSample :: IO Logic
+generateBigSample = generate . resize 200 $ arbitrary
