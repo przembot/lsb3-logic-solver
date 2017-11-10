@@ -3,9 +3,13 @@ module SatSpec (spec) where
 import Test.Hspec
 import Test.QuickCheck
 import Data.Either (isRight)
+import Data.Maybe (isJust)
+import Data.List (foldl1')
+import Data.Char (isLower)
 
 import Logic
 import SAT
+import CNF
 
 -- | Formuly bedace tautologiami LSB3_x
 -- | przepisane w referatu
@@ -27,7 +31,7 @@ tautFormulas = [
 -- | Formuly bedace tautologiami w LSB3_T
 tautTFormulas :: [Logic]
 tautTFormulas = [
-    C $ (BinForm Impl (Var 'q') (BinForm Impl (Var 'p') (Var 'q')))
+    C (BinForm Impl (Var 'q') (BinForm Impl (Var 'p') (Var 'q')))
   , C $ BinForm Impl (BinForm Impl (Var 'p') (Var 'q'))
                      (BinForm Impl (BinForm Impl (Var 'q') (Var 'r'))
                                    (BinForm Impl (Var 'p') (Var 'r')))
@@ -43,6 +47,44 @@ satFormulas = [
   BinForm Impl (Not (C (Not (Var 'p')))) (C (Var 'p'))
   ]
 
+
+-- | Wrapper na wyrazenie logiczne bedace
+-- | w formacie CNF
+newtype CNFLogic = CNFLogic { unCL :: Logic }
+  deriving Show
+
+
+instance Arbitrary CNFLogic where
+  arbitrary = CNFLogic . cnfToLogic <$> sized cnf
+
+
+singleelem :: Gen (Negable Atom)
+singleelem = elements [Pure, NotE] <*> oneof [VarE <$> var]
+  where
+    var = suchThat arbitrary isLower
+
+clause :: Int -> Int -> Gen Clause
+clause n m = vectorOf n (elements [Pure, NotE] <*> vectorOf m singleelem)
+
+cnf :: Int -> Gen CNF
+cnf n = vectorOf x (clause 3 3)
+  where
+    x = ceiling ((fromIntegral n)/9 :: Float)
+    -- x = ceiling (fromIntegral n ** (1/3) :: Float)
+
+
+cnfToLogic :: CNF -> Logic
+cnfToLogic = foldl1' (BinForm And)
+           . map clauseToLogic
+    where
+      clauseToLogic = foldl1' (BinForm Or)
+                    . map funcToLogic
+      funcToLogic (Pure l) = C $ foldl1' (BinForm Or) (map natomToLogic l)
+      funcToLogic (NotE l) = Not $ C $ foldl1' (BinForm Or) (map natomToLogic l)
+      natomToLogic (Pure x) = atomToLogic x
+      natomToLogic (NotE x) = Not $ atomToLogic x
+      atomToLogic (Lit x) = Const x
+      atomToLogic (VarE x) = Var x
 
 -- | Formuly niespelnialne w LSB3_x
 -- czyli negacje tautologii z LSB3_x
@@ -74,10 +116,10 @@ shouldSatNoTaut forms sat = mapM_ (\(f, num) ->
   ) $ zip forms nats
 
 
-prop_naive_dpll :: Logic -> Property
-prop_naive_dpll expr =
-  isRight (uniRunSat Naive LSB3T expr) ===
-    isRight (uniRunSat DPLL LSB3T expr)
+prop_naive_dpll :: CNFLogic -> Property
+prop_naive_dpll (CNFLogic expr) =
+  (isRight (uniRunSat Naive LSB3T expr) ===
+    isRight (uniRunSat DPLL LSB3T expr))
 
 
 
@@ -104,4 +146,4 @@ spec = do
 
   describe "dla dowolnego wyrazenia" $ do
     it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku" $
-      mapSize (const 10) $ property prop_naive_dpll
+      mapSize (const 50) $ property prop_naive_dpll

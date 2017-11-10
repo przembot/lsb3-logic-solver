@@ -118,6 +118,7 @@ type CNF = [Clause]
 type Clause = [Negable [Elem]]
 type Elem = Negable Atom
 
+
 unNegable :: Negable x -> x
 unNegable (Pure x) = x
 unNegable (NotE x) = x
@@ -145,7 +146,7 @@ filterVars :: [Atom] -> String
 filterVars = mapMaybe getCharFromAtom
 
 modifyAllAtoms :: (Atom -> Atom) -> CNF -> CNF
-modifyAllAtoms = map . map . fmap . map . fmap
+modifyAllAtoms = fmap . fmap . fmap . fmap . fmap
 
 modifyAllVars :: (Char -> Atom) -> CNF -> CNF
 modifyAllVars f = modifyAllAtoms

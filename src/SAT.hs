@@ -21,84 +21,53 @@ import Logic
 import CNF
 
 
--- | Jezeli atom jest zmienna, to podaj nazwe zmiennej
-stripVar :: Atom -> Maybe Char
-stripVar (VarE x) = Just x
-stripVar _ = Nothing
-
-
 -- | Porownanie polarnosci - jezeli sa zgodne, to zapamietuje polarnosc.
 -- | W przeciwnym przypadku zapominam.
 -- | Nothing oznacza pomieszane polarnosci.
-comparePols :: Maybe BoolT -> Maybe BoolT -> Maybe BoolT
-comparePols (Just x) (Just y) = if x == y then Just x
-                                          else Nothing
+comparePols :: Eq a => Maybe a -> a -> Maybe a
+comparePols (Just x) y = if x == y then Just x
+                                   else Nothing
 comparePols _ _ = Nothing
 
 
 -- | Aktualizacja danych w mapie opisujacej polarnosci zmiennych
-updateHMData :: HashMap Char (Maybe BoolT)
-             -> VarPol -> HashMap Char (Maybe BoolT)
+updateHMData :: HashMap Char (Maybe TriVal)
+             -> VarPol -> HashMap Char (Maybe TriVal)
 updateHMData hm (VarPol (x, pols)) =
   case HM.lookup x hm of
-    Nothing -> HM.insert x (Just pols) hm
-    (Just oldpols) -> HM.insert x (comparePols oldpols (pure pols)) hm
-
-
--- | Polarnosc zewnetrzna i wewnetrzna zmiennej
-type BoolT = (Bool, Bool)
+    (Just oldpols) -> HM.insert x (comparePols oldpols pols) hm
+    _ -> HM.insert x (Just pols) hm
 
 
 -- | Wrapper na polarnosc i nazwe zmiennej
-newtype VarPol = VarPol (Char, BoolT)
+newtype VarPol = VarPol (Char, TriVal)
 
 
 -- | Konwersja struktury zawierajaca zmienna oraz jej polarnosc
-polToVPol :: Negable (Negable Char) -> VarPol
-polToVPol (Pure (Pure x)) = VarPol (x, (True, True))
-polToVPol (Pure (NotE x)) = VarPol (x, (True, False))
-polToVPol (NotE (Pure x)) = VarPol (x, (False, True))
-polToVPol (NotE (NotE x)) = VarPol (x, (False, False))
+polToVPol :: Negable (Negable Atom) -> Maybe VarPol
+polToVPol (Pure (Pure (VarE x))) = Just $ VarPol (x, TrueV)
+polToVPol (Pure (NotE (VarE x))) = Just $ VarPol (x, FalseV)
+polToVPol (NotE (Pure (VarE x))) = Just $ VarPol (x, FalseV)
+polToVPol (NotE (NotE (VarE x))) = Just $ VarPol (x, TrueV)
+polToVPol _ = Nothing
 
 
 -- | Znajduje wszystkie zmienne bedace w jednej polarnosci
 stripPolarities :: CNF -> HashMap Char TriVal
-stripPolarities =   HM.map subs
-                  . HM.mapMaybe id
-                  . foldl' updateHMData HM.empty
-                  . mapMaybe (fmap polToVPol . traverse sequence . fmap (fmap stripVar))
-                  . concatMap sequence
-                  . concat
-
-
--- | Zwraca odpowiednie podstawienie przy danej polaryzacji zmiennej
-subs :: BoolT -> TriVal
-subs (True, True) = TrueV
-subs (False, True) = FalseV
-subs (True, False) = FalseV
-subs (False, False) = TrueV
-
-
--- | Podstaw za zmienna bedaca w jednej polarnosci w calym wyrazeniu
--- | odpowiednia stala wartosc
-literalElimination :: CNF -> (Interpretation, CNF)
-literalElimination form =
-  let
-    varpols = stripPolarities form
-  in (HM.toList varpols, modifyAllVars
-    (\x -> case HM.lookup x varpols of
-                  Just newval -> Lit newval
-                  _ -> VarE x
-    ) form)
+stripPolarities = HM.mapMaybe id
+                . foldl' updateHMData HM.empty
+                . mapMaybe polToVPol
+                . concatMap sequence
+                . concat
 
 
 -- | Czy klauzula zawiera tylko jedna zmienna - i jezli tak to jaka oraz
 -- | co za nia nalezy podstawic
 isUnitClause :: Clause -> Maybe (Char, TriVal)
-isUnitClause [Pure [Pure (VarE x)]] = Just (x, curry subs True True)
-isUnitClause [Pure [NotE (VarE x)]] = Just (x, curry subs True False)
-isUnitClause [NotE [Pure (VarE x)]] = Just (x, curry subs False True)
-isUnitClause [NotE [NotE (VarE x)]] = Just (x, curry subs False False)
+isUnitClause [Pure [Pure (VarE x)]] = Just (x, TrueV)
+isUnitClause [Pure [NotE (VarE x)]] = Just (x, FalseV)
+isUnitClause [NotE [Pure (VarE x)]] = Just (x, FalseV)
+isUnitClause [NotE [NotE (VarE x)]] = Just (x, TrueV)
 isUnitClause _ = Nothing
 
 
@@ -109,17 +78,19 @@ assignments = HM.fromList
             . mapMaybe isUnitClause
 
 
--- | Podstawia wartosci za zmienne wystepujace samodzielnie
-unitPropagation :: CNF -> (Interpretation, CNF)
-unitPropagation form =
+-- | Wykonuje mozliwe podstawienia heurtystyczne
+-- | Literal elimination: Podstaw za zmienna bedaca w jednej polarnosci w calym wyrazeniu
+-- | odpowiednia stala wartosc
+-- | Unit propagation: Podstawia wartosci za zmienne wystepujace samodzielnie
+composedHeuristics :: CNF -> (Interpretation, CNF)
+composedHeuristics form =
   let
-    subsmap = assignments form
+    subsmap = assignments form `HM.union` stripPolarities form
   in (HM.toList subsmap, modifyAllVars
     (\x -> case HM.lookup x subsmap of
                   Just val -> Lit val
                   _ -> VarE x
     ) form)
-
 
 -- | Upraszcza wedle mozliwosci wyrazenie CNF,
 -- | jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
@@ -235,33 +206,21 @@ type Interpretation = [(Char, TriVal)]
 satDPLL :: Interpretation -> ([Elem] -> [Elem]) -> CNF -> Maybe Interpretation
 satDPLL hist se expr =
   case isSimplified expr' of
-    Right x -> if x == TrueV then Just (hist++histheur) else Nothing
+    Right x -> if x == TrueV then Just (histheur++hist) else Nothing
     Left var ->
       let
-        trueGuess = simplifyCNF' (substitudeVar var TrueV expr)
-        neitherGuess = simplifyCNF' (substitudeVar var Neither expr)
-        falseGuess = simplifyCNF' (substitudeVar var FalseV expr)
+        trueGuess = simplifyCNF' (substitudeVar var TrueV expr')
+        neitherGuess = simplifyCNF' (substitudeVar var Neither expr')
+        falseGuess = simplifyCNF' (substitudeVar var FalseV expr')
       in satDPLL' (addHist var TrueV) trueGuess
          <|> satDPLL' (addHist var Neither) neitherGuess
          <|> satDPLL' (addHist var FalseV) falseGuess
    where
-     (histheur, c) = composeHeuristics literalElimination unitPropagation expr
+     (histheur, c) = composedHeuristics expr
      expr' = simplifyCNF' c
      simplifyCNF' = simplifyCNF se
      satDPLL' h = satDPLL h se
-     addHist var val = (var,val):hist
-
-
--- | Kompozycja funkcji heurystycznych uzywanych w algorytmie DPLL
-composeHeuristics :: (CNF -> (Interpretation, CNF))
-                  -> (CNF -> (Interpretation, CNF))
-                  -> CNF
-                  -> (Interpretation, CNF)
-composeHeuristics f g cnf =
-  let
-    (res1, c) = g cnf
-    (res2, c') = f c
-  in (res1++res2, c')
+     addHist var val = (var,val):(histheur++hist)
 
 
 -- | Silnik sluzacy do rozwiazywania problemu SAT
