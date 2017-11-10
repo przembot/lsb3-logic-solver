@@ -13,6 +13,7 @@ import Data.Maybe (mapMaybe, listToMaybe)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Control.Applicative ((<|>))
+import Data.Foldable (foldl')
 
 import Text.Parsec (ParseError)
 
@@ -64,7 +65,7 @@ polToVPol (NotE (NotE x)) = VarPol (x, (False, False))
 stripPolarities :: CNF -> HashMap Char TriVal
 stripPolarities =   HM.map subs
                   . HM.mapMaybe id
-                  . foldl updateHMData HM.empty
+                  . foldl' updateHMData HM.empty
                   . mapMaybe (fmap polToVPol . traverse sequence . fmap (fmap stripVar))
                   . concatMap sequence
                   . concat
@@ -124,7 +125,7 @@ unitPropagation form =
 -- | jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
 simplifyCNF :: ([Elem] -> [Elem]) -- ^ funkcja redukujaca wartosci wewnatrz funktora, zalezna od wybranego typu logiki T lub P
             -> CNF -> CNF
-simplifyCNF se = foldl reduceClauses []
+simplifyCNF se = foldl' reduceClauses []
                . map (simplifyClause se)
 
 reduceClauses :: CNF -> Clause -> CNF
@@ -146,7 +147,7 @@ failSat = [[Pure [Pure (Lit FalseV)]]]
 -- | Funkcja upraszczajaca klauzule
 simplifyClause :: ([Elem] -> [Elem])
                -> Clause -> Clause
-simplifyClause se = foldl reduceClause []
+simplifyClause se = foldl' reduceClause []
                   . map (fmap se)
 
 
@@ -172,7 +173,7 @@ trueClause :: Clause
 trueClause = [Pure [Pure (Lit TrueV)]]
 
 simplifyElems :: [Elem] -> [Elem]
-simplifyElems = foldl simplifyElem []
+simplifyElems = foldl' simplifyElem []
 
 simplifyElem :: [Elem] -> Elem -> [Elem]
 simplifyElem [Pure (Lit TrueV)] _ = [Pure (Lit TrueV)] -- klauzula juz prawdziwa
@@ -186,7 +187,7 @@ simplifyElem acc (NotE (Lit Neither)) = acc
 simplifyElem acc a = a:acc
 
 simplifyElemsT :: [Elem] -> [Elem]
-simplifyElemsT = snd . foldl simplifyElemT (False, [])
+simplifyElemsT = snd . foldl' simplifyElemT (False, [])
 
 simplifyElemT :: (Bool, [Elem]) -> Elem -> (Bool, [Elem])
 simplifyElemT acc@(_, [Pure (Lit TrueV)]) _ = acc

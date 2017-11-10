@@ -76,11 +76,8 @@ shouldSatNoTaut forms sat = mapM_ (\(f, num) ->
 
 prop_naive_dpll :: Logic -> Property
 prop_naive_dpll expr =
-  (isRight (uniRunSat Naive LSB3T expr) ==>
-    isRight (uniRunSat DPLL LSB3T expr))
-    .&&.
-  (isRight (uniRunSat DPLL LSB3T expr) ==>
-    isRight (uniRunSat Naive LSB3T expr))
+  isRight (uniRunSat Naive LSB3T expr) ===
+    isRight (uniRunSat DPLL LSB3T expr)
 
 
 
@@ -107,4 +104,4 @@ spec = do
 
   describe "dla dowolnego wyrazenia" $ do
     it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku" $
-      mapSize (const 15) $ property prop_naive_dpll
+      mapSize (const 10) $ property prop_naive_dpll

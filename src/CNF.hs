@@ -19,6 +19,7 @@ module CNF (
   ) where
 
 import Data.Maybe (mapMaybe)
+import Data.List (foldl1')
 import Logic
 
 -- | Zamienia wynikanie i ekwiwalencje na sumy i iloczyny
@@ -29,63 +30,66 @@ replaceImpl (BinForm Equiv x y) =
   BinForm And
     (BinForm Or (Not (replaceImpl x)) (replaceImpl y))
     (BinForm Or (Not (replaceImpl y)) (replaceImpl x))
-replaceImpl (BinForm op x y) = BinForm op (replaceImpl x) (replaceImpl y)
-replaceImpl (Not x) = Not (replaceImpl x)
-replaceImpl (C x) = C (replaceImpl x)
-replaceImpl x = x
+replaceImpl x = applyLogic replaceImpl x
 
--- | Pozbywa sie zbednych negacji,
--- uzywajac praw De Morgana
--- i usuwajac podwojne negacje
-removeNeg :: Logic -> Logic
-removeNeg = removeNegO notO
-  where
-    -- Parametrem funkcji jest funkcja logiczna NOT, stosowana by dla funktora C uzyc innej
-    removeNegO :: (TriVal -> TriVal) -> Logic -> Logic
-    removeNegO notX (Not (Not x)) = removeNegO notX x
-    -- wartosc stala
-    removeNegO notX (Not (Const x)) = Const (notX x)
-    -- De Morgan
-    removeNegO notX (Not (BinForm And x y)) = BinForm Or (removeNegO notX $ Not x) (removeNegO notX $ Not y)
-    removeNegO notX (Not (BinForm Or x y)) = BinForm And (removeNegO notX $ Not x) (removeNegO notX $ Not y)
-    -- rekurencja
-    removeNegO notX (Not x) = Not (removeNegO notX x)
-    removeNegO notX (BinForm op x y) = BinForm op (removeNegO notX x) (removeNegO notX y)
-    removeNegO _ (C x) = C $ removeNegO notI x
-    removeNegO _ x = x
 
--- | Zamienia A or (B and C) na (A or B) and (A or C)
-distribute :: Logic -> Logic
-distribute (BinForm Or x (BinForm And y z)) =
-  BinForm And (BinForm Or (distribute x) (distribute y))
-              (BinForm Or (distribute x) (distribute z))
-distribute (BinForm Or (BinForm And y z) x) =
-  BinForm And (BinForm Or (distribute x) (distribute y))
-              (BinForm Or (distribute x) (distribute z))
-distribute (BinForm op x y) = BinForm op (distribute x) (distribute y)
-distribute (C x) = C (distribute x)
-distribute (Not x) = Not (distribute x)
-distribute x = x
+stripLits :: Logic -> [Logic]
+stripLits (BinForm And x y) = stripLits x ++ stripLits y
+stripLits x = [x]
 
-normalizeToCnf :: Logic -> Logic
-normalizeToCnf expr =
-  if new == expr
-     then expr
-     else normalizeToCnf new
-       where
-         new = distribute . removeNeg . moveAndToOutside $ expr
 
--- C( .. AND ..) -> C(..) AND C(..)
-moveAndToOutside :: Logic -> Logic
-moveAndToOutside (C (BinForm And x y)) = BinForm And (C x) (C y) -- tautologia w lsb3
-moveAndToOutside (C x) = C $ moveAndToOutside x
-moveAndToOutside (Not x) = Not $ moveAndToOutside x
-moveAndToOutside (BinForm op x y) = BinForm op (moveAndToOutside x) (moveAndToOutside y)
-moveAndToOutside x = x
+-- | Przeksztalca wyrazenie bez -> i <-> do postaci normalnej
+convert :: Logic -> Logic
+convert (Not (Not x)) = convert x
+-- wartosc stala
+convert (Not (Const x)) = Const (notO x)
+-- De Morgan
+convert (Not (BinForm And x y)) = convert $ BinForm Or (Not x) (Not y)
+convert (Not (BinForm Or x y)) = convert $ BinForm And (Not x) (Not y)
+convert (BinForm Or x y) =
+  foldl1' (BinForm And) $
+    BinForm Or <$> stripLits (convert x) <*> stripLits (convert y)
+convert (BinForm And x y) = BinForm And (convert x) (convert y)
+convert (C x) = fixc . C . convertI $ x
+convert (Not (C x)) = fixnc . C . convertI $ x
+convert x = x
 
--- zalozenie - nie ma zmiennych poza funktorem C()
+
+-- | Przestawia funktor C na zewnatrz jezeli to mozliwe
+fixc :: Logic -> Logic
+fixc (C (BinForm And x y)) = BinForm And (fixc . C $ x) (fixc . C $ y)
+fixc x = x
+
+
+-- | Przestawia funktor C na zewnatrz w wyrazeniu ~C(a * b * c * ..)
+-- | do postaci ~C(a) + ~C(b) + ..
+fixnc :: Logic -> Logic
+fixnc (C (BinForm And x y)) =
+  BinForm Or (fixnc . C $ x) (fixnc . C $ y)
+fixnc (C x) = Not . C $ x
+fixnc x = x
+
+
+-- | Przeksztalca wyrazenie bez -> i <-> do postaci normalnej
+-- | wewnatrz funktora C
+convertI :: Logic -> Logic
+convertI (Not (Not x)) = convertI x
+-- wartosc stala
+convertI (Not (Const x)) = Const (notI x)
+-- De Morgan
+convertI (Not (BinForm And x y)) = convertI $ BinForm Or (Not x) (Not y)
+convertI (Not (BinForm Or x y)) = convertI $ BinForm And (Not x) (Not y)
+convertI (BinForm Or x y) =
+  foldl1' (BinForm And) $
+    BinForm Or <$> stripLits (convertI x) <*> stripLits (convertI y)
+convertI (BinForm And x y) = BinForm And (convertI x) (convertI y)
+convertI x = x
+
+
+-- | Konwertuje wyrazenie do postaci CNF
+-- | Nie ma zmiennych poza funktorem C() - inaczej zwroci Nothing
 convertToCnf :: Logic -> Maybe CNF
-convertToCnf = run . normalizeToCnf . replaceImpl
+convertToCnf = run . convert . replaceImpl
   where
     run :: Logic -> Maybe CNF
     run (C x) = (\a -> [[Pure a]]) <$> stripElems x

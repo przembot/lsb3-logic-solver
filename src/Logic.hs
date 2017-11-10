@@ -7,6 +7,7 @@ module Logic (
   , Logic (..)
   , notO
   , notI
+  , applyLogic
   ) where
 
 import Test.QuickCheck.Arbitrary
@@ -80,7 +81,7 @@ instance Arbitrary Logic where
 -- | Generator logiki LSB3
 logic' :: Int -> Gen Logic
 logic' 0 = C <$> sampleLogic' 0
-logic' n = oneof [ Not <$> subtree, C <$> sampleLogic' n,
+logic' n = oneof [ Not <$> logic' n, C <$> sampleLogic' n,
                    BinForm <$> arbitrary <*> subtree <*> subtree ]
                      where
                        subtree = logic' (n `div` 2)
@@ -88,11 +89,19 @@ logic' n = oneof [ Not <$> subtree, C <$> sampleLogic' n,
 
 -- | Generator logiki pozbawionej funktora C
 sampleLogic' :: Int -> Gen Logic
-sampleLogic' 0 = oneof [ Var <$> suchThat arbitrary isLower]
-sampleLogic' n = oneof [ Not <$> subtree, BinForm <$> arbitrary <*> subtree <*> subtree ]
+sampleLogic' 0 = oneof [ Var <$> suchThat arbitrary isLower, Not . Var <$> suchThat arbitrary isLower]
+sampleLogic' n = oneof [ Not <$> sampleLogic' n, BinForm <$> arbitrary <*> subtree <*> subtree ]
                            where
                              subtree = sampleLogic' (n `div` 2)
 
 
 generateBigSample :: IO Logic
-generateBigSample = generate . resize 200 $ arbitrary
+generateBigSample = generate . resize 50 $ arbitrary
+
+
+-- | Inspiracja recursion schemes
+applyLogic :: (Logic -> Logic) -> Logic -> Logic
+applyLogic f (BinForm op a b) = BinForm op (f a) (f b)
+applyLogic f (C x) = C (f x)
+applyLogic f (Not x) = Not (f x)
+applyLogic _ x = x
