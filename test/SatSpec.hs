@@ -30,16 +30,19 @@ tautFormulas = [
 
 -- | Formuly bedace tautologiami w LSB3_T
 tautTFormulas :: [Logic]
-tautTFormulas = [
-    C (BinForm Impl (Var 'q') (BinForm Impl (Var 'p') (Var 'q')))
+tautTFormulas =
+  [ C (BinForm Impl (Var 'q') (BinForm Impl (Var 'p') (Var 'q')))
   , C $ BinForm Impl (BinForm Impl (Var 'p') (Var 'q'))
                      (BinForm Impl (BinForm Impl (Var 'q') (Var 'r'))
                                    (BinForm Impl (Var 'p') (Var 'r')))
-    ]
+  ]
 
 -- | Formuly bedace tautologiami w LSB3_P
 tautPFormulas :: [Logic]
-tautPFormulas = []
+tautPFormulas =
+  [ BinForm Equiv (C (BinForm Or (Var 'a') (Var 'b')))
+                  (BinForm Or (C (Var 'a')) (C (Var 'b')))
+  ]
 
 -- | Formuly spelnialne w LSB3_x
 satFormulas :: [Logic]
@@ -47,6 +50,11 @@ satFormulas = [
   BinForm Impl (Not (C (Not (Var 'p')))) (C (Var 'p'))
   ]
 
+
+-- | Formuly niespelnialne w LSB3_x
+-- czyli negacje tautologii z LSB3_x
+unsatFormulas :: [Logic]
+unsatFormulas = map Not tautFormulas
 
 -- | Wrapper na wyrazenie logiczne bedace
 -- | w formacie CNF
@@ -85,11 +93,6 @@ cnfToLogic = foldl1' (BinForm And)
       natomToLogic (NotE x) = Not $ atomToLogic x
       atomToLogic (Lit x) = Const x
       atomToLogic (VarE x) = Var x
-
--- | Formuly niespelnialne w LSB3_x
--- czyli negacje tautologii z LSB3_x
-unsatFormulas :: [Logic]
-unsatFormulas = map Not tautFormulas
 
 -- Liczby naturalne
 nats :: [Int]
@@ -137,7 +140,7 @@ spec = do
       shouldNotSat (uniRunSat DPLL LSB3T)
   describe "funkcja sat (taut) powinna spelniac" $ do
     describe "lsb3_p" $
-      shouldSatTaut tautFormulas (uniRunTaut DPLL LSB3P)
+      shouldSatTaut (tautFormulas ++ tautPFormulas) (uniRunTaut DPLL LSB3P)
     describe "lsb3_t" $
       shouldSatTaut (tautFormulas ++ tautTFormulas) (uniRunTaut DPLL LSB3T)
   describe "funkcja sat (taut) nie powinna spelniac" $ do

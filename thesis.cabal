@@ -45,6 +45,7 @@ executable prof-thesis
   build-depends:       base >= 4.7 && < 5
                      , thesis
                      , text
+                     -- , criterion
 
 
 test-suite test-thesis

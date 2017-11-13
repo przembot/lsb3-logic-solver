@@ -21,9 +21,6 @@ tautFormulas = [
                  (C (Var 'b'))
   ]
 
-hugeTaut :: Logic
-hugeTaut = foldl1 (BinForm And) tautFormulas
-
 atrans, btrans :: String
 atrans = "pqrstu"
 btrans = reverse atrans
@@ -44,12 +41,19 @@ hugeTautManyVars = foldl1 (BinForm And) . zipWith (\(a,b) form ->
 
 
 genTestCase :: Logic -> [Benchmark]
-genTestCase expr =
+genTestCase expr = naiveTestCase expr ++ dpllTestCase expr
+
+naiveTestCase :: Logic -> [Benchmark]
+naiveTestCase expr =
   [ bench "LSB3T naiveSolverSat" $ whnf (uniRunSat Naive LSB3T) expr
   , bench "LSB3T naiveSolverTaut" $ whnf (uniRunTaut Naive LSB3T) expr
   , bench "LSB3P naiveSolverSat" $ whnf (uniRunSat Naive LSB3P) expr
   , bench "LSB3P naiveSolverTaut" $ whnf (uniRunTaut Naive LSB3P) expr
-  , bench "LSB3T DPLLSolverSat" $ whnf (uniRunSat DPLL LSB3T) expr
+  ]
+
+dpllTestCase :: Logic -> [Benchmark]
+dpllTestCase expr =
+  [ bench "LSB3T DPLLSolverSat" $ whnf (uniRunSat DPLL LSB3T) expr
   , bench "LSB3T DPLLSolverTaut" $ whnf (uniRunTaut DPLL LSB3T) expr
   , bench "LSB3P DPLLSolverSat" $ whnf (uniRunSat DPLL LSB3P) expr
   , bench "LSB3P DPLLSolverTaut" $ whnf (uniRunTaut DPLL LSB3P) expr
@@ -60,8 +64,6 @@ main = do
   (Right bigsample) <- parseLogic <$> T.readFile "bench/bigsample"
 
   defaultMain
-    [
-    -- bgroup "sample" (genTestCase hugeTaut)
-    -- , bgroup "6vars" (genTestCase hugeTautManyVars)
-      bgroup "bigsample" (genTestCase bigsample)
+    [ bgroup "simple expression" (genTestCase hugeTautManyVars)
+    , bgroup "bigsample (dpll only)" (dpllTestCase bigsample)
     ]

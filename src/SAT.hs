@@ -150,11 +150,9 @@ simplifyElem :: [Elem] -> Elem -> [Elem]
 simplifyElem [Pure (Lit TrueV)] _ = [Pure (Lit TrueV)] -- klauzula juz prawdziwa
 simplifyElem _ (Pure (Lit TrueV)) = [Pure (Lit TrueV)]
 simplifyElem _ (NotE (Lit FalseV)) = [Pure (Lit TrueV)]
-simplifyElem acc (Pure (Lit FalseV)) = acc
-simplifyElem acc (NotE (Lit TrueV)) = acc
 -- LSB3_P, 1/2 jest obojetna
-simplifyElem acc (Pure (Lit Neither)) = acc
-simplifyElem acc (NotE (Lit Neither)) = acc
+simplifyElem acc (Pure (Lit _)) = acc
+simplifyElem acc (NotE (Lit _)) = acc
 simplifyElem acc a = a:acc
 
 simplifyElemsT :: [Elem] -> [Elem]
