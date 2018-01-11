@@ -10,12 +10,15 @@ module Logic (
   , notI
   , applyLogic
   , evalLogic
+  , findUnassignedVar
+  , substitudeNaiveVar
   ) where
 
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Gen
 
 import Data.Char (isLower)
+import Control.Applicative ((<|>))
 
 
 -- | Wartosci wystepujace w logike LSB3
@@ -106,6 +109,22 @@ sampleLogic' n = oneof [ Not <$> sampleLogic' n, BinForm <$> arbitrary <*> subtr
 
 generateBigSample :: IO Logic
 generateBigSample = generate . resize 50 $ arbitrary
+
+-- | Znajduje zmienna zdaniowa w formule
+findUnassignedVar :: Logic -> Maybe Char
+findUnassignedVar (Var x) = Just x
+findUnassignedVar (Const _) = Nothing
+findUnassignedVar (Not x) = findUnassignedVar x
+findUnassignedVar (BinForm _ x y) = findUnassignedVar x <|> findUnassignedVar y
+findUnassignedVar (C x) = findUnassignedVar x
+
+-- | Podstawia wartosc za dana zmienna
+-- | w formule
+substitudeNaiveVar :: Char -> TriVal -> Logic -> Logic
+substitudeNaiveVar var val (Var x) =
+  if x == var then Const val
+              else Var x
+substitudeNaiveVar var val expr = applyLogic (substitudeNaiveVar var val) expr
 
 
 -- | Inspiracja recursion schemes

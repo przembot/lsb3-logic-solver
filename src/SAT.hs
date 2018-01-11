@@ -18,7 +18,7 @@ import Data.Foldable (foldl')
 import Text.Parsec (ParseError)
 
 import Logic
-import CNF
+import NF
 
 -- | Porownanie polarnosci - jezeli sa zgodne, to zapamietuje polarnosc.
 -- | W przeciwnym przypadku zapominam.
@@ -52,7 +52,7 @@ polToVPol _ = Nothing
 
 
 -- | Znajduje wszystkie zmienne bedace w jednej polarnosci
-stripPolarities :: CNF -> HashMap Char TriVal
+stripPolarities :: NF -> HashMap Char TriVal
 stripPolarities = HM.mapMaybe id
                 . foldl' updateHMData HM.empty
                 . mapMaybe polToVPol
@@ -72,7 +72,7 @@ isUnitClause _ = Nothing
 
 -- | Mapa zawierajaca informacje o mozliwych podstawieniach przy uzyciu
 -- | Unit Propagation
-assignments :: CNF -> HashMap Char TriVal
+assignments :: NF -> HashMap Char TriVal
 assignments = HM.fromList
             . mapMaybe isUnitClause
 
@@ -81,7 +81,7 @@ assignments = HM.fromList
 -- | Literal elimination: Podstaw za zmienna bedaca w jednej polarnosci w calym wyrazeniu
 -- | odpowiednia stala wartosc
 -- | Unit propagation: Podstawia wartosci za zmienne wystepujace samodzielnie
-composedHeuristics :: CNF -> (Interpretation, CNF)
+composedHeuristics :: NF -> (Interpretation, NF)
 composedHeuristics form =
   let
     subsmap = assignments form `HM.union` stripPolarities form
@@ -91,14 +91,14 @@ composedHeuristics form =
                   _ -> VarE x
     ) form)
 
--- | Upraszcza wedle mozliwosci wyrazenie CNF,
+-- | Upraszcza wedle mozliwosci wyrazenie NF,
 -- | jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
-simplifyCNF :: ([Elem] -> [Elem]) -- ^ funkcja redukujaca wartosci wewnatrz funktora, zalezna od wybranego typu logiki T lub P
-            -> CNF -> CNF
-simplifyCNF se = foldl' reduceClauses []
+simplifyNF :: ([Elem] -> [Elem]) -- ^ funkcja redukujaca wartosci wewnatrz funktora, zalezna od wybranego typu logiki T lub P
+            -> NF -> NF
+simplifyNF se = foldl' reduceClauses []
                . map (simplifyClause se)
 
-reduceClauses :: CNF -> Clause -> CNF
+reduceClauses :: NF -> Clause -> NF
 reduceClauses acc [] = filterElemF acc FalseV
 reduceClauses acc [Pure []] = filterElemF acc FalseV
 reduceClauses acc [NotE []] = filterElemF acc TrueV
@@ -109,8 +109,8 @@ reduceClauses acc [NotE [NotE (Lit x)]] = filterElemF acc (notO . notI $ x)
 reduceClauses acc a = a:acc
 
 
--- | Wyrazenie CNF oznaczajace nieudana probe podstawien wartosci
-failSat :: CNF
+-- | Wyrazenie NF oznaczajace nieudana probe podstawien wartosci
+failSat :: NF
 failSat = [[Pure [Pure (Lit FalseV)]]]
 
 
@@ -134,7 +134,7 @@ filterElemT :: Clause -> TriVal -> Clause
 filterElemT _ TrueV = trueClause
 filterElemT acc _ = acc
 
-filterElemF :: CNF -> TriVal -> CNF
+filterElemF :: NF -> TriVal -> NF
 filterElemF acc TrueV = acc
 filterElemF _ _ = failSat
 
@@ -176,13 +176,13 @@ simplifyElemT (s, acc) (NotE (Lit Neither)) =
 simplifyElemT (s, acc) a = (s, a:acc)
 
 -- | Znajdz w wyrazeniu, jezeli istnieje, nieprzypisana zmienna
-findVar :: CNF -> Maybe Char
+findVar :: NF -> Maybe Char
 findVar = listToMaybe . filterVars . stripAtoms
 
 
 -- | Jezeli w wyrazeniu znajduje sie wolna zmienna, zwraca ja
 -- | jezeli nie, to zwraca wartosc calego wyrazenia
-isSimplified :: CNF -> Either Char TriVal
+isSimplified :: NF -> Either Char TriVal
 isSimplified [] = Right TrueV
 isSimplified [[Pure [Pure (Lit x)]]] = Right x
 isSimplified form = case findVar form of
@@ -190,7 +190,7 @@ isSimplified form = case findVar form of
                       _ -> Right FalseV
 
 -- | Podstaw wartosc za dana zmienna
-substitudeVar :: Char -> TriVal -> CNF -> CNF
+substitudeVar :: Char -> TriVal -> NF -> NF
 substitudeVar var val = modifyAllVars
                           (\v -> if v == var then Lit val
                                              else VarE v
@@ -203,35 +203,22 @@ type Interpretation = [(Char, TriVal)]
 
 -- | Glowny silnik rozwiazywania problemu SAT przy uzyciu heurystyk
 -- | zgodnie z algorytmem DPLL dostosowanym do logiki LSB3
-satDPLL :: Interpretation -> ([Elem] -> [Elem]) -> CNF -> Maybe Interpretation
+satDPLL :: Interpretation -> ([Elem] -> [Elem]) -> NF -> Maybe Interpretation
 satDPLL hist se expr =
   case isSimplified expr' of
     Right x -> if x == TrueV then Just (histheur++hist) else Nothing
     Left var ->
       let
-        branch val = satDPLL' (addHist var val) (simplifyCNF' (substitudeVar var val expr'))
+        branch val = satDPLL' (addHist var val) (simplifyNF' (substitudeVar var val expr'))
       in
         branch TrueV <|> branch Neither <|> branch FalseV
    where
      (histheur, c) = composedHeuristics expr
-     expr' = simplifyCNF' c
-     simplifyCNF' = simplifyCNF se
+     expr' = simplifyNF' c
+     simplifyNF' = simplifyNF se
      satDPLL' h = satDPLL h se
      addHist var val = (var,val):(histheur++hist)
 
-
-findUnassignedVar :: Logic -> Maybe Char
-findUnassignedVar (Var x) = Just x
-findUnassignedVar (Const _) = Nothing
-findUnassignedVar (Not x) = findUnassignedVar x
-findUnassignedVar (BinForm _ x y) = findUnassignedVar x <|> findUnassignedVar y
-findUnassignedVar (C x) = findUnassignedVar x
-
-substitudeNaiveVar :: Char -> TriVal -> Logic -> Logic
-substitudeNaiveVar var val (Var x) =
-  if x == var then Const val
-              else Var x
-substitudeNaiveVar var val expr = applyLogic (substitudeNaiveVar var val) expr
 
 -- | Silnik sluzacy do rozwiazywania problemu SAT
 -- | przy uzyciu naiwnego algorytmu prob i bledow
@@ -254,7 +241,7 @@ satNaive lt hist expr =
 -- | Opakowanie na bledy mogace wystapic przy probie uzycia programu
 data Error =
     ParseFailure ParseError
-  | CNFConversionFail
+  | NFConversionFail
   | NoInterpretationFound
   | TautologyFail Interpretation
   deriving (Show, Eq)
@@ -275,7 +262,7 @@ satToTautRes (Right x) = Left . TautologyFail $ x
 runSat :: ([Elem] -> [Elem]) -> Logic -> SatResult
 runSat f = (>>= throwOnNothing NoInterpretationFound)
          . fmap (satDPLL [] f)
-         . throwOnNothing CNFConversionFail
+         . throwOnNothing NFConversionFail
          . convertToCnf
 
 

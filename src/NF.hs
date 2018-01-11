@@ -1,17 +1,17 @@
 {-
-   Modul zawierajacy opis i konwersje do CNF
+   Modul zawierajacy opis i konwersje do NF
 -}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE LambdaCase #-}
-module CNF (
+module NF (
     convertToCnf
   , unNegable
   , stripAtoms
   , filterVars
   , modifyAllAtoms
   , modifyAllVars
-  , CNF
+  , NF
   , Clause
   , Elem
   , Negable (..)
@@ -86,12 +86,12 @@ convertI (BinForm And x y) = BinForm And (convertI x) (convertI y)
 convertI x = x
 
 
--- | Konwertuje wyrazenie do postaci CNF
+-- | Konwertuje wyrazenie do postaci NF
 -- | Nie ma zmiennych poza funktorem C() - inaczej zwroci Nothing
-convertToCnf :: Logic -> Maybe CNF
+convertToCnf :: Logic -> Maybe NF
 convertToCnf = run . convert . replaceImpl
   where
-    run :: Logic -> Maybe CNF
+    run :: Logic -> Maybe NF
     run (C x) = (\a -> [[Pure a]]) <$> stripElems x
     run (Not (C x)) = (\a -> [[NotE a]]) <$> stripElems x
     run (BinForm And x y) = (++) <$> run x <*> run y
@@ -113,7 +113,7 @@ convertToCnf = run . convert . replaceImpl
     stripElems _ = Nothing -- niepoprawne wyrazenie
 
 
-type CNF = [Clause]
+type NF = [Clause]
 -- moze inny kontener niz lista? (set? sequence?)
 type Clause = [Negable [Elem]]
 type Elem = Negable Atom
@@ -129,13 +129,13 @@ data Negable x =
   | NotE x
   deriving (Show, Eq, Functor, Foldable, Traversable)
 
--- | Pojedynczy atom wystepujacy w wyrazeniu CNF
+-- | Pojedynczy atom wystepujacy w wyrazeniu NF
 data Atom =
     Lit TriVal
   | VarE Char
   deriving (Show, Eq)
 
-stripAtoms :: CNF -> [Atom]
+stripAtoms :: NF -> [Atom]
 stripAtoms = map unNegable . concatMap unNegable . concat
 
 getCharFromAtom :: Atom -> Maybe Char
@@ -145,10 +145,10 @@ getCharFromAtom _ = Nothing
 filterVars :: [Atom] -> String
 filterVars = mapMaybe getCharFromAtom
 
-modifyAllAtoms :: (Atom -> Atom) -> CNF -> CNF
+modifyAllAtoms :: (Atom -> Atom) -> NF -> NF
 modifyAllAtoms = fmap . fmap . fmap . fmap . fmap
 
-modifyAllVars :: (Char -> Atom) -> CNF -> CNF
+modifyAllVars :: (Char -> Atom) -> NF -> NF
 modifyAllVars f = modifyAllAtoms
                     (\case
                       VarE x -> f x

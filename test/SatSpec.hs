@@ -8,7 +8,7 @@ import Data.Char (isLower)
 
 import Logic
 import SAT
-import CNF
+import NF
 
 -- | Formuly bedace tautologiami LSB3_x
 -- | przepisane w referatu
@@ -65,31 +65,32 @@ unsatFormulas :: [Logic]
 unsatFormulas = map Not tautFormulas
 
 -- | Wrapper na wyrazenie logiczne bedace
--- | w formacie CNF
-newtype CNFLogic = CNFLogic { unCL :: Logic }
+-- | w formacie NF
+newtype NFLogic = NFLogic { unCL :: Logic }
   deriving Show
 
 
-instance Arbitrary CNFLogic where
-  arbitrary = CNFLogic . cnfToLogic <$> sized cnf
+instance Arbitrary NFLogic where
+  arbitrary = NFLogic . cnfToLogic <$> sized cnf
 
 
 singleelem :: Gen (Negable Atom)
-singleelem = elements [Pure, NotE] <*> oneof [VarE <$> var]
+singleelem = elements [Pure, NotE] <*> oneof [VarE <$> var, Lit <$> val]
   where
     var = suchThat arbitrary isLower
+    val = elements [TrueV, Neither, FalseV]
 
 clause :: Int -> Int -> Gen Clause
 clause n m = vectorOf n (elements [Pure, NotE] <*> vectorOf m singleelem)
 
-cnf :: Int -> Gen CNF
+cnf :: Int -> Gen NF
 cnf n = vectorOf x (clause 3 3)
   where
     x = ceiling (fromIntegral n/9 :: Float)
     -- x = ceiling (fromIntegral n ** (1/3) :: Float)
 
 
-cnfToLogic :: CNF -> Logic
+cnfToLogic :: NF -> Logic
 cnfToLogic = foldl1' (BinForm And)
            . map clauseToLogic
     where
@@ -106,14 +107,33 @@ cnfToLogic = foldl1' (BinForm And)
 nats :: [Int]
 nats = 1 : map (+1) nats
 
-shouldSat, shouldNotSat :: (Logic -> SatResult) -- ^ solver
+-- | Sprawdza, czy formula jest spelnialna
+-- | uzywajac danych podstawien.
+-- | Jezeli nie ma ktorejs ze zmiennych,
+-- | sprawdza kazda mozliwosc
+verifySubs :: LogicType -> Logic -> Interpretation -> Bool
+verifySubs lt expr subs =
+  let
+    expr' = foldl (flip ($)) expr (map (uncurry substitudeNaiveVar) subs)
+  in
+    case findUnassignedVar expr' of
+      Just var -> verifySubs lt expr' [(var, TrueV)]
+               && verifySubs lt expr' [(var, Neither)]
+               && verifySubs lt expr' [(var, FalseV)]
+      Nothing ->
+          case evalLogic lt expr' of
+            Just val -> val == TrueV
+            _ -> False
+
+shouldSat, shouldNotSat :: LogicType
+                        -> (LogicType -> Logic -> SatResult) -- ^ solver
                         -> Spec
-shouldSat sat = mapM_ (\(f, num) ->
-  it ("should sat "++ show num) $ isRight (sat f) `shouldBe` True
+shouldSat lt sat = mapM_ (\(f, num) ->
+  it ("should sat "++ show num) $ (verifySubs lt f <$> sat lt f) `shouldBe` Right True
   ) $ zip (tautFormulas++satFormulas) nats
 
-shouldNotSat sat = mapM_ (\(f, num) ->
-  it ("should unsat "++ show num) $ isRight (sat f) `shouldBe` False
+shouldNotSat lt sat = mapM_ (\(f, num) ->
+  it ("should unsat "++ show num) $ sat lt f `shouldBe` Left NoInterpretationFound
   ) $ zip unsatFormulas nats
 
 shouldSatExtra :: [Logic] -> (Logic -> SatResult)
@@ -133,10 +153,10 @@ shouldSatNoTaut forms sat = mapM_ (\(f, num) ->
   ) $ zip forms nats
 
 
-prop_naive_dpll :: CNFLogic -> Property
-prop_naive_dpll (CNFLogic expr) =
-  isRight (uniRunSat Naive LSB3T expr) ===
-    isRight (uniRunSat DPLL LSB3T expr)
+prop_naive_dpll :: LogicType -> NFLogic -> Property
+prop_naive_dpll lt (NFLogic expr) =
+  (verifySubs lt expr <$> (uniRunSat Naive lt expr)) ===
+    (verifySubs lt expr <$> (uniRunSat DPLL lt expr))
 
 
 -- | Dla zadanego typu solvera sprawdza,
@@ -147,14 +167,14 @@ solverSpec st =
   describe ("dla solvera typu " ++ show st) $ do
     describe "funkcja sat powinna spelniac" $ do
       describe "lsb3_p" $
-        shouldSat (uniRunSat st LSB3P)
+        shouldSat LSB3P (uniRunSat st)
       describe "lsb3_t" $
         shouldSatExtra satTFormulas (uniRunSat st LSB3T)
     describe "funkcja sat nie powinna spelniac" $ do
       describe "lsb3_p" $
-        shouldNotSat (uniRunSat st LSB3P)
+        shouldNotSat LSB3P (uniRunSat st)
       describe "lsb3_t" $
-        shouldNotSat (uniRunSat st LSB3T)
+        shouldNotSat LSB3T (uniRunSat st)
     describe "funkcja sat (taut) powinna spelniac" $ do
       describe "lsb3_p" $
         shouldSatTaut (tautFormulas ++ tautPFormulas) (uniRunTaut st LSB3P)
@@ -169,6 +189,8 @@ spec :: Spec
 spec = do
   solverSpec Naive
   solverSpec DPLL
-  describe "dla dowolnego wyrazenia" $
-    it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku" $
-      mapSize (const 11) $ property prop_naive_dpll
+  describe "dla dowolnego wyrazenia" $ do
+    it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku: LSB3T" $
+      mapSize (const 11) $ property $ prop_naive_dpll LSB3T
+    it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku: LSB3P" $
+      mapSize (const 11) $ property $ prop_naive_dpll LSB3P
