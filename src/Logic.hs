@@ -5,9 +5,11 @@ module Logic (
     TriVal (..)
   , BinaryOp (..)
   , Logic (..)
+  , LogicType (..)
   , notO
   , notI
   , applyLogic
+  , evalLogic
   ) where
 
 import Test.QuickCheck.Arbitrary
@@ -22,6 +24,13 @@ data TriVal =
   | Neither
   | FalseV
   deriving Eq
+
+
+-- | Mozliwe warianty logiki
+data LogicType = LSB3T
+               | LSB3P
+               deriving Eq
+
 
 instance Show TriVal where
   show TrueV = "T"
@@ -105,3 +114,54 @@ applyLogic f (BinForm op a b) = BinForm op (f a) (f b)
 applyLogic f (C x) = C (f x)
 applyLogic f (Not x) = Not (f x)
 applyLogic _ x = x
+
+-- | Oblicza wartosc
+evalLogic :: LogicType -> Logic -> Maybe TriVal
+evalLogic _ (Const x) = Just x
+evalLogic _ (Var _) = Nothing
+evalLogic lt (Not x) = notO <$> evalLogic lt x
+evalLogic lt (BinForm op x y) = evalOp op <$> (evalLogic lt x) <*> (evalLogic lt y)
+evalLogic lt (C x) = evalLogicI lt x
+
+evalLogicI :: LogicType -> Logic -> Maybe TriVal
+evalLogicI _ (Const x) = Just x
+evalLogicI _ (Var _) = Nothing
+evalLogicI lt (Not x) = notI <$> evalLogicI lt x
+evalLogicI lt (BinForm op x y) = evalOpI lt op <$> (evalLogicI lt x) <*> (evalLogicI lt y)
+evalLogicI lt (C x) = evalLogicI lt x
+
+
+-- | Obliczenie wartosci formuly dla logiki zewnetrznej
+evalOp :: BinaryOp -> TriVal -> TriVal -> TriVal
+evalOp Or TrueV _ = TrueV
+evalOp Or _ TrueV = TrueV
+evalOp Or _ _ = FalseV
+evalOp And TrueV TrueV = TrueV
+evalOp And _ _ = FalseV
+evalOp Impl a b = evalOp Or (notO a) (b)
+evalOp Equiv a b = evalOp Or (evalOp Impl a b) (evalOp Impl b a)
+
+evalOpI :: LogicType -> BinaryOp -> TriVal -> TriVal -> TriVal
+evalOpI LSB3T = evalOpIT
+evalOpI LSB3P = evalOpIP
+
+evalOpIT, evalOpIP :: BinaryOp -> TriVal -> TriVal -> TriVal
+evalOpIP Or TrueV _ = TrueV
+evalOpIP Or _ TrueV = TrueV
+evalOpIP Or FalseV FalseV = FalseV
+evalOpIP Or _ _ = Neither
+evalOpIP And TrueV TrueV = TrueV
+evalOpIP And FalseV _ = FalseV
+evalOpIP And _ FalseV = FalseV
+evalOpIP And _ _ = Neither
+evalOpIP Impl a b = evalOpIP Or (notI a) (b)
+evalOpIP Equiv a b = evalOpIP Or (evalOpIP Impl a b) (evalOpIP Impl b a)
+
+evalOpIT Or FalseV x = x
+evalOpIT Or x FalseV = x
+evalOpIT Or _ _ = TrueV
+evalOpIT And TrueV x = x
+evalOpIT And x TrueV = x
+evalOpIT And _ _ = FalseV
+evalOpIT Impl a b = evalOpIT Or (notI a) (b)
+evalOpIT Equiv a b = evalOpIT Or (evalOpIT Impl a b) (evalOpIT Impl b a)

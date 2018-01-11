@@ -9,7 +9,7 @@ module SAT (
   , TautResult
   ) where
 
-import Data.Maybe (mapMaybe, listToMaybe)
+import Data.Maybe (mapMaybe, listToMaybe, maybe)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Control.Applicative ((<|>))
@@ -19,7 +19,6 @@ import Text.Parsec (ParseError)
 
 import Logic
 import CNF
-
 
 -- | Porownanie polarnosci - jezeli sa zgodne, to zapamietuje polarnosc.
 -- | W przeciwnym przypadku zapominam.
@@ -66,8 +65,8 @@ stripPolarities = HM.mapMaybe id
 isUnitClause :: Clause -> Maybe (Char, TriVal)
 isUnitClause [Pure [Pure (VarE x)]] = Just (x, TrueV)
 isUnitClause [Pure [NotE (VarE x)]] = Just (x, FalseV)
-isUnitClause [NotE [Pure (VarE x)]] = Just (x, FalseV)
-isUnitClause [NotE [NotE (VarE x)]] = Just (x, TrueV)
+-- isUnitClause [NotE [Pure (VarE x)]] = Just (x, FalseV)
+-- isUnitClause [NotE [NotE (VarE x)]] = Just (x, TrueV)
 isUnitClause _ = Nothing
 
 
@@ -156,7 +155,10 @@ simplifyElem acc (NotE (Lit _)) = acc
 simplifyElem acc a = a:acc
 
 simplifyElemsT :: [Elem] -> [Elem]
-simplifyElemsT = snd . foldl' simplifyElemT (False, [])
+simplifyElemsT = (\(a, elems) -> -- jezeli zostal znaleziony jeden Neither, to dolacz go spowrotem)
+                   if a then Pure (Lit Neither):elems
+                   else elems)
+               . foldl' simplifyElemT (False, [])
 
 simplifyElemT :: (Bool, [Elem]) -> Elem -> (Bool, [Elem])
 simplifyElemT acc@(_, [Pure (Lit TrueV)]) _ = acc
@@ -166,10 +168,10 @@ simplifyElemT acc (Pure (Lit FalseV)) = acc
 simplifyElemT acc (NotE (Lit TrueV)) = acc
 -- LSB3_T, trzeba pamietac i brac pod uwage wystapienie 1/2
 simplifyElemT (s, acc) (Pure (Lit Neither)) =
-  if s then (s, [Pure (Lit TrueV)])
+  if s then (False, [Pure (Lit TrueV)])
        else (True, acc)
 simplifyElemT (s, acc) (NotE (Lit Neither)) =
-  if s then (s, [Pure (Lit TrueV)])
+  if s then (False, [Pure (Lit TrueV)])
        else (True, acc)
 simplifyElemT (s, acc) a = (s, a:acc)
 
@@ -207,12 +209,9 @@ satDPLL hist se expr =
     Right x -> if x == TrueV then Just (histheur++hist) else Nothing
     Left var ->
       let
-        trueGuess = simplifyCNF' (substitudeVar var TrueV expr')
-        neitherGuess = simplifyCNF' (substitudeVar var Neither expr')
-        falseGuess = simplifyCNF' (substitudeVar var FalseV expr')
-      in satDPLL' (addHist var TrueV) trueGuess
-         <|> satDPLL' (addHist var Neither) neitherGuess
-         <|> satDPLL' (addHist var FalseV) falseGuess
+        branch val = satDPLL' (addHist var val) (simplifyCNF' (substitudeVar var val expr'))
+      in
+        branch TrueV <|> branch Neither <|> branch FalseV
    where
      (histheur, c) = composedHeuristics expr
      expr' = simplifyCNF' c
@@ -221,27 +220,36 @@ satDPLL hist se expr =
      addHist var val = (var,val):(histheur++hist)
 
 
+findUnassignedVar :: Logic -> Maybe Char
+findUnassignedVar (Var x) = Just x
+findUnassignedVar (Const _) = Nothing
+findUnassignedVar (Not x) = findUnassignedVar x
+findUnassignedVar (BinForm _ x y) = findUnassignedVar x <|> findUnassignedVar y
+findUnassignedVar (C x) = findUnassignedVar x
+
+substitudeNaiveVar :: Char -> TriVal -> Logic -> Logic
+substitudeNaiveVar var val (Var x) =
+  if x == var then Const val
+              else Var x
+substitudeNaiveVar var val expr = applyLogic (substitudeNaiveVar var val) expr
+
 -- | Silnik sluzacy do rozwiazywania problemu SAT
 -- | przy uzyciu naiwnego algorytmu prob i bledow
-satNaive :: Interpretation -> ([Elem] -> [Elem]) -> CNF -> Maybe Interpretation
-satNaive hist se expr =
-  case isSimplified expr' of
-    Right x -> if x == TrueV then Just hist else Nothing
-    Left var ->
+satNaive :: LogicType -> Interpretation -> Logic -> Maybe Interpretation
+satNaive lt hist expr =
+  case findUnassignedVar expr of
+    Just var ->
       let
-        trueGuess = simplifyCNF' (substitudeVar var TrueV expr)
-        neitherGuess = simplifyCNF' (substitudeVar var Neither expr)
-        falseGuess = simplifyCNF' (substitudeVar var FalseV expr)
-      in satNaive' (addHist var TrueV) trueGuess
-         <|> satNaive' (addHist var Neither) neitherGuess
-         <|> satNaive' (addHist var FalseV) falseGuess
+        branch val = satNaive' (addHist var val) (substitudeNaiveVar var val expr)
+      in
+         branch TrueV <|> branch Neither <|> branch FalseV
+    Nothing ->
+      if evalLogic lt expr == Just TrueV
+         then Just hist
+         else Nothing
    where
-     expr' = simplifyCNF' expr
-     simplifyCNF' = simplifyCNF se
-     satNaive' h = satNaive h se
      addHist var val = (var,val):hist
-
-
+     satNaive' = satNaive lt
 
 -- | Opakowanie na bledy mogace wystapic przy probie uzycia programu
 data Error =
@@ -271,20 +279,14 @@ runSat f = (>>= throwOnNothing NoInterpretationFound)
          . convertToCnf
 
 
-runNaiveSat :: ([Elem] -> [Elem]) -> Logic -> SatResult
-runNaiveSat f = (>>= throwOnNothing NoInterpretationFound)
-              . fmap (satNaive [] f)
-              . throwOnNothing CNFConversionFail
-              . convertToCnf
+runNaiveSat :: LogicType -> Logic -> SatResult
+runNaiveSat lt = maybe (Left NoInterpretationFound) Right
+               . satNaive lt []
 
-
-data LogicType = LSB3T
-               | LSB3P
-               deriving Eq
 
 data SolverType = Naive
                 | DPLL
-                deriving Eq
+                deriving (Eq, Show)
 
 uniLogicMapper :: LogicType -> [Elem] -> [Elem]
 uniLogicMapper LSB3T = simplifyElemsT
@@ -292,7 +294,7 @@ uniLogicMapper LSB3P = simplifyElems
 
 
 uniRunSat :: SolverType -> LogicType -> Logic -> SatResult
-uniRunSat Naive = runNaiveSat . uniLogicMapper
+uniRunSat Naive = runNaiveSat
 uniRunSat DPLL = runSat . uniLogicMapper
 
 

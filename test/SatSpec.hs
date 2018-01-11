@@ -3,7 +3,6 @@ module SatSpec (spec) where
 import Test.Hspec
 import Test.QuickCheck
 import Data.Either (isRight)
-import Data.Maybe (isJust)
 import Data.List (foldl1')
 import Data.Char (isLower)
 
@@ -26,6 +25,11 @@ tautFormulas = [
   , Not (C (BinForm And (Var 'a') (Not (Var 'a'))))
   , BinForm Impl (C (BinForm And (Var 'a') (Not (Var 'a'))))
                  (C (Var 'b'))
+  -- De Morgan
+  , BinForm Equiv (C (Not (BinForm Or (Var 'a') (Var 'b'))))
+                  (C (BinForm And (Not (Var 'a')) (Not (Var 'b'))))
+  , BinForm Equiv (C (Not (BinForm And (Var 'a') (Var 'b'))))
+                  (C (BinForm Or (Not (Var 'a')) (Not (Var 'b'))))
   ]
 
 -- | Formuly bedace tautologiami w LSB3_T
@@ -50,6 +54,10 @@ satFormulas = [
   BinForm Impl (Not (C (Not (Var 'p')))) (C (Var 'p'))
   ]
 
+satTFormulas :: [Logic]
+satTFormulas = [
+  BinForm And (Not (C (Var 'a'))) (C (BinForm Or (Var 'a') (Const Neither)))
+  ]
 
 -- | Formuly niespelnialne w LSB3_x
 -- czyli negacje tautologii z LSB3_x
@@ -77,7 +85,7 @@ clause n m = vectorOf n (elements [Pure, NotE] <*> vectorOf m singleelem)
 cnf :: Int -> Gen CNF
 cnf n = vectorOf x (clause 3 3)
   where
-    x = ceiling ((fromIntegral n)/9 :: Float)
+    x = ceiling (fromIntegral n/9 :: Float)
     -- x = ceiling (fromIntegral n ** (1/3) :: Float)
 
 
@@ -101,52 +109,66 @@ nats = 1 : map (+1) nats
 shouldSat, shouldNotSat :: (Logic -> SatResult) -- ^ solver
                         -> Spec
 shouldSat sat = mapM_ (\(f, num) ->
-  it ("should sat "++(show num)) $ isRight (sat f) `shouldBe` True
+  it ("should sat "++ show num) $ isRight (sat f) `shouldBe` True
   ) $ zip (tautFormulas++satFormulas) nats
 
 shouldNotSat sat = mapM_ (\(f, num) ->
-  it ("should unsat "++(show num)) $ isRight (sat f) `shouldBe` False
+  it ("should unsat "++ show num) $ isRight (sat f) `shouldBe` False
   ) $ zip unsatFormulas nats
+
+shouldSatExtra :: [Logic] -> (Logic -> SatResult)
+               -> Spec
+shouldSatExtra extra sat = mapM_ (\(f, num) ->
+  it ("should sat "++ show num) $ isRight (sat f) `shouldBe` True
+  ) $ zip (tautFormulas++satFormulas++extra) nats
 
 shouldSatTaut :: [Logic] -> (Logic -> TautResult) -> Spec
 shouldSatTaut set sat = mapM_ (\(f, num) ->
-  it ("should sat (taut) "++(show num)) $ isRight (sat f) `shouldBe` True
+  it ("should sat (taut) "++ show num) $ isRight (sat f) `shouldBe` True
   ) $ zip set nats
 
 shouldSatNoTaut :: [Logic] -> (Logic -> TautResult) -> Spec
 shouldSatNoTaut forms sat = mapM_ (\(f, num) ->
-  it ("should sat (no taut) "++(show num)) $ isRight (sat f) `shouldBe` False
+  it ("should sat (no taut) "++ show num) $ isRight (sat f) `shouldBe` False
   ) $ zip forms nats
 
 
 prop_naive_dpll :: CNFLogic -> Property
 prop_naive_dpll (CNFLogic expr) =
-  (isRight (uniRunSat Naive LSB3T expr) ===
-    isRight (uniRunSat DPLL LSB3T expr))
+  isRight (uniRunSat Naive LSB3T expr) ===
+    isRight (uniRunSat DPLL LSB3T expr)
 
+
+-- | Dla zadanego typu solvera sprawdza,
+-- | czy podstawowe aksjomaty i inne formuly
+-- | sa spelnialne badz sa tautologiami
+solverSpec :: SolverType -> Spec
+solverSpec st =
+  describe ("dla solvera typu " ++ show st) $ do
+    describe "funkcja sat powinna spelniac" $ do
+      describe "lsb3_p" $
+        shouldSat (uniRunSat st LSB3P)
+      describe "lsb3_t" $
+        shouldSatExtra satTFormulas (uniRunSat st LSB3T)
+    describe "funkcja sat nie powinna spelniac" $ do
+      describe "lsb3_p" $
+        shouldNotSat (uniRunSat st LSB3P)
+      describe "lsb3_t" $
+        shouldNotSat (uniRunSat st LSB3T)
+    describe "funkcja sat (taut) powinna spelniac" $ do
+      describe "lsb3_p" $
+        shouldSatTaut (tautFormulas ++ tautPFormulas) (uniRunTaut st LSB3P)
+      describe "lsb3_t" $
+        shouldSatTaut (tautFormulas ++ tautTFormulas) (uniRunTaut st LSB3T)
+    describe "funkcja sat (taut) nie powinna spelniac" $
+      describe "lsb3_p" $
+        shouldSatNoTaut tautTFormulas (uniRunTaut st LSB3P)
 
 
 spec :: Spec
 spec = do
-  describe "funkcja sat powinna spelniac" $ do
-    describe "lsb3_p" $
-      shouldSat (uniRunSat DPLL LSB3P)
-    describe "lsb3_t" $
-      shouldSat (uniRunSat DPLL LSB3T)
-  describe "funkcja sat nie powinna spelniac" $ do
-    describe "lsb3_p" $
-      shouldNotSat (uniRunSat DPLL LSB3P)
-    describe "lsb3_t" $
-      shouldNotSat (uniRunSat DPLL LSB3T)
-  describe "funkcja sat (taut) powinna spelniac" $ do
-    describe "lsb3_p" $
-      shouldSatTaut (tautFormulas ++ tautPFormulas) (uniRunTaut DPLL LSB3P)
-    describe "lsb3_t" $
-      shouldSatTaut (tautFormulas ++ tautTFormulas) (uniRunTaut DPLL LSB3T)
-  describe "funkcja sat (taut) nie powinna spelniac" $ do
-    describe "lsb3_p" $
-      shouldSatNoTaut tautTFormulas (uniRunTaut DPLL LSB3P)
-
-  describe "dla dowolnego wyrazenia" $ do
+  solverSpec Naive
+  solverSpec DPLL
+  describe "dla dowolnego wyrazenia" $
     it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku" $
-      mapSize (const 50) $ property prop_naive_dpll
+      mapSize (const 11) $ property prop_naive_dpll
