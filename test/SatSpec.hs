@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 module SatSpec (spec) where
 
 import Test.Hspec
@@ -10,12 +11,17 @@ import Data.Bifunctor (bimap)
 import Logic
 import SAT
 import NF
+import Parser
+
+sample = let
+  Right a = parseLogic "C(~(( ~( ~i * ~m ) + ~i) * (i + m)))"
+  in a
 
 -- | Formuly bedace tautologiami LSB3
 -- | przepisane z referatu
 tautFormulas :: [Logic]
-tautFormulas = [
-    BinForm Impl (C (BinForm Impl (Var 'a') (Var 'b')))
+tautFormulas =
+  [ BinForm Impl (C (BinForm Impl (Var 'a') (Var 'b')))
                  (BinForm Impl (C (Var 'a')) (C (Var 'b')))
   , BinForm Impl (C (Var 'a')) (Not (C (Not (Var 'a'))))
   , BinForm Equiv (C (BinForm And (Var 'a') (Var 'b')))
@@ -47,12 +53,20 @@ tautPFormulas :: [Logic]
 tautPFormulas =
   [ BinForm Equiv (C (BinForm Or (Var 'a') (Var 'b')))
                   (BinForm Or (C (Var 'a')) (C (Var 'b')))
+  -- dystrybucja wewnatrz funktora
+  , BinForm Equiv (C (BinForm Or (Var 'a') (BinForm And (Var 'b') (Var 'c'))))
+                  (C (BinForm And (BinForm Or (Var 'a') (Var 'b'))
+                                  (BinForm Or (Var 'a') (Var 'c'))))
   ]
 
 -- | Formuly spelnialne w LSB3
 satFormulas :: [Logic]
-satFormulas = [
-  BinForm Impl (Not (C (Not (Var 'p')))) (C (Var 'p'))
+satFormulas =
+  [ BinForm Impl (Not (C (Not (Var 'p')))) (C (Var 'p'))
+  -- dystrybucja wewnatrz funktora
+  , BinForm Equiv (C (BinForm Or (Var 'a') (BinForm And (Var 'b') (Var 'c'))))
+                  (C (BinForm And (BinForm Or (Var 'a') (Var 'b'))
+                                  (BinForm Or (Var 'a') (Var 'c'))))
   ]
 
 -- | Formuly spelnialne tylko w LSB3_T
@@ -75,7 +89,7 @@ newtype NFLogic = NFLogic { unCL :: Logic }
 
 
 instance Arbitrary NFLogic where
-  arbitrary = NFLogic . cnfToLogic <$> sized cnf
+  arbitrary = NFLogic . nfToLogic <$> sized nf
 
 
 singleelem :: Gen (Negable Atom)
@@ -90,8 +104,8 @@ clause n m = vectorOf n (elements [Pure, NotE] <*> vectorOf m singleelem)
 
 -- | Generator formuly logicznej bedacej juz
 -- | w postaci normalnej
-cnf :: Int -> Gen NF
-cnf n = vectorOf x (clause 3 3)
+nf :: Int -> Gen NF
+nf n = vectorOf x (clause 2 2)
   where
     x = ceiling (fromIntegral n/9 :: Float)
 
@@ -192,9 +206,13 @@ commonTaut lt expr =
   f (uniRunTaut Naive lt expr) === f (uniRunTaut DPLL lt expr)
     where
       f = bimap (\case
-                  TautologyFail proof -> verifySubs lt expr proof
-                  e -> error (show e)
-                ) id
+            TautologyFail proof ->
+              if verifySubs lt expr proof == False
+                 then False
+                 else error $
+                   "dowod nietautologicznosci jest bledny " ++ show proof
+            e -> error (show e)
+          ) id
 
 
 -- | Dla zadanego typu solvera sprawdza,
@@ -233,14 +251,14 @@ propertySpec info satp tautp =
   describe ("dla dowolnej formuly" ++ info) $ do
     describe "sat" $ do
       it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku: LSB3T" $
-        mapSize (const 12) . property $ satp LSB3T
+        mapSize (const 10) . property $ satp LSB3T
       it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku: LSB3P" $
-        mapSize (const 12) . property $ satp LSB3P
+        mapSize (const 10) . property $ satp LSB3P
     describe "taut" $ do
       it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku: LSB3T" $
-        mapSize (const 11) . property $ tautp LSB3T
+        mapSize (const 10) . property $ tautp LSB3T
       it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku: LSB3P" $
-        mapSize (const 11) . property $ tautp LSB3P
+        mapSize (const 10) . property $ tautp LSB3P
 
 spec :: Spec
 spec = do

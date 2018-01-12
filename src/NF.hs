@@ -5,13 +5,13 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE LambdaCase #-}
 module NF (
-    convertToCnf
+    convertToNf
   , unNegable
   , stripAtoms
   , filterVars
   , modifyAllAtoms
   , modifyAllVars
-  , cnfToLogic
+  , nfToLogic
   , NF
   , Clause
   , Elem
@@ -80,6 +80,7 @@ convertI (Not (Const x)) = Const (notI x)
 -- De Morgan
 convertI (Not (BinForm And x y)) = convertI $ BinForm Or (Not x) (Not y)
 convertI (Not (BinForm Or x y)) = convertI $ BinForm And (Not x) (Not y)
+-- TODO: is not valid in LSB3_T
 convertI (BinForm Or x y) =
   foldl1' (BinForm And) $
     BinForm Or <$> stripLits (convertI x) <*> stripLits (convertI y)
@@ -89,8 +90,8 @@ convertI x = x
 
 -- | Konwertuje wyrazenie do postaci NF
 -- | Nie ma zmiennych poza funktorem C() - inaczej zwroci Nothing
-convertToCnf :: Logic -> Maybe NF
-convertToCnf = run . convert . replaceImpl
+convertToNf :: Logic -> Maybe NF
+convertToNf = run . convert . replaceImpl
   where
     run :: Logic -> Maybe NF
     run (C x) = (\a -> [[Pure a]]) <$> stripElems x
@@ -160,8 +161,8 @@ modifyAllVars f = modifyAllAtoms
 -- | reprezentujacej postac normalna
 -- | do struktury danych reprezentujacej
 -- | dowolne wyrazenie logiczne
-cnfToLogic :: NF -> Logic
-cnfToLogic = foldl1' (BinForm And)
+nfToLogic :: NF -> Logic
+nfToLogic = foldl1' (BinForm And)
            . map clauseToLogic
     where
       clauseToLogic = foldl1' (BinForm Or)

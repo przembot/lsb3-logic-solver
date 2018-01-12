@@ -87,22 +87,27 @@ instance Arbitrary BinaryOp where
   arbitrary = elements [And, Or, Impl, Equiv]
 
 instance Arbitrary Logic where
-  arbitrary = sized logic'
+  arbitrary = sized genLogic
 
+
+genLogic :: Int -> Gen Logic
+genLogic n = logic' (ceiling (fromIntegral n/2 :: Float))
 
 -- | Generator logiki LSB3
 logic' :: Int -> Gen Logic
 logic' 0 = C <$> sampleLogic' 0
-logic' n = oneof [ Not <$> logic' n, C <$> sampleLogic' n,
-                   BinForm <$> arbitrary <*> subtree <*> subtree ]
+logic' n = oneof [ Not <$> logic' n, C <$> sampleLogic' n
+                 , BinForm <$> elements [Or, And] <*> subtree <*> subtree ]
                      where
                        subtree = logic' (n `div` 2)
 
 
 -- | Generator logiki pozbawionej funktora C
 sampleLogic' :: Int -> Gen Logic
-sampleLogic' 0 = oneof [ Var <$> suchThat arbitrary isLower, Not . Var <$> suchThat arbitrary isLower]
-sampleLogic' n = oneof [ Not <$> sampleLogic' n, BinForm <$> arbitrary <*> subtree <*> subtree ]
+sampleLogic' 0 = oneof [ Var <$> suchThat arbitrary isLower
+                       , Not . Var <$> suchThat arbitrary isLower]
+sampleLogic' n = oneof [ Not <$> sampleLogic' n
+                       , BinForm <$> elements [Or, And] <*> subtree <*> subtree ]
                            where
                              subtree = sampleLogic' (n `div` 2)
 

@@ -265,7 +265,7 @@ runSat :: ([Elem] -> [Elem]) -> Logic -> SatResult
 runSat f = (>>= throwOnNothing NoInterpretationFound)
          . fmap (satDPLL [] f)
          . throwOnNothing NFConversionFail
-         . convertToCnf
+         . convertToNf
 
 
 runNaiveSat :: LogicType -> Logic -> SatResult
