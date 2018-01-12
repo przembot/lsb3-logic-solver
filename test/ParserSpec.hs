@@ -12,6 +12,7 @@ import Parser
 prop_parse_show :: Logic -> Bool
 prop_parse_show expr = (parseLogic . pack . filter (/= ' ') . show) expr == Right expr
 
+impl, equiv :: Logic -> Logic -> Logic
 impl = BinForm Impl
 equiv = BinForm Equiv
 

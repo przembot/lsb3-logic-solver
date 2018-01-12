@@ -161,9 +161,11 @@ simplifyElemsT = (\(a, elems) -> -- jezeli zostal znaleziony jeden Neither, to d
                . foldl' simplifyElemT (False, [])
 
 simplifyElemT :: (Bool, [Elem]) -> Elem -> (Bool, [Elem])
+-- dla ponizszych 3 przypadkow jest bez znaczenia, czy wczesniej wystapilo
+-- Neither, gdyz i tak klauzula jest prawdziwa
 simplifyElemT acc@(_, [Pure (Lit TrueV)]) _ = acc
-simplifyElemT (s, _) (Pure (Lit TrueV)) = (s, [Pure (Lit TrueV)])
-simplifyElemT (s, _) (NotE (Lit FalseV)) = (s, [Pure (Lit TrueV)])
+simplifyElemT (_, _) (Pure (Lit TrueV)) = (False, [Pure (Lit TrueV)])
+simplifyElemT (_, _) (NotE (Lit FalseV)) = (False, [Pure (Lit TrueV)])
 simplifyElemT acc (Pure (Lit FalseV)) = acc
 simplifyElemT acc (NotE (Lit TrueV)) = acc
 -- LSB3_T, trzeba pamietac i brac pod uwage wystapienie 1/2

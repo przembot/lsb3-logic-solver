@@ -11,6 +11,7 @@ module NF (
   , filterVars
   , modifyAllAtoms
   , modifyAllVars
+  , cnfToLogic
   , NF
   , Clause
   , Elem
@@ -154,3 +155,22 @@ modifyAllVars f = modifyAllAtoms
                       VarE x -> f x
                       a -> a
                     )
+
+-- | Konwertuje formule ze struktury danych
+-- | reprezentujacej postac normalna
+-- | do struktury danych reprezentujacej
+-- | dowolne wyrazenie logiczne
+cnfToLogic :: NF -> Logic
+cnfToLogic = foldl1' (BinForm And)
+           . map clauseToLogic
+    where
+      clauseToLogic = foldl1' (BinForm Or)
+                    . map funcToLogic
+      funcToLogic (Pure l) = C $ foldl1' (BinForm Or) (map natomToLogic l)
+      funcToLogic (NotE l) = Not $ C $ foldl1' (BinForm Or) (map natomToLogic l)
+      natomToLogic (Pure x) = atomToLogic x
+      natomToLogic (NotE x) = Not $ atomToLogic x
+      atomToLogic (Lit x) = Const x
+      atomToLogic (VarE x) = Var x
+
+
