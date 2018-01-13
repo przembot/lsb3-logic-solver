@@ -30,8 +30,8 @@ comparePols _ _ = Nothing
 
 
 -- | Aktualizacja danych w mapie opisujacej polarnosci zmiennych
-updateHMData :: HashMap Char (Maybe TriVal)
-             -> VarPol -> HashMap Char (Maybe TriVal)
+updateHMData :: HashMap Char (Maybe (Bool, Bool))
+             -> VarPol -> HashMap Char (Maybe (Bool, Bool))
 updateHMData hm (VarPol (x, pols)) =
   case HM.lookup x hm of
     (Just oldpols) -> HM.insert x (comparePols oldpols pols) hm
@@ -39,21 +39,26 @@ updateHMData hm (VarPol (x, pols)) =
 
 
 -- | Wrapper na polarnosc i nazwe zmiennej
-newtype VarPol = VarPol (Char, TriVal)
+newtype VarPol = VarPol (Char, (Bool, Bool))
 
 
 -- | Konwersja struktury zawierajaca zmienna oraz jej polarnosc
 polToVPol :: Negable (Negable Atom) -> Maybe VarPol
-polToVPol (Pure (Pure (VarE x))) = Just $ VarPol (x, TrueV)
-polToVPol (Pure (NotE (VarE x))) = Just $ VarPol (x, FalseV)
-polToVPol (NotE (Pure (VarE x))) = Just $ VarPol (x, FalseV)
-polToVPol (NotE (NotE (VarE x))) = Just $ VarPol (x, TrueV)
+polToVPol (Pure (Pure (VarE x))) = Just $ VarPol (x, (True, True))
+polToVPol (Pure (NotE (VarE x))) = Just $ VarPol (x, (True, False))
+polToVPol (NotE (Pure (VarE x))) = Just $ VarPol (x, (False, True))
+polToVPol (NotE (NotE (VarE x))) = Just $ VarPol (x, (False, False))
 polToVPol _ = Nothing
 
+polsToVal :: (Bool, Bool) -> TriVal
+polsToVal (True, True) = TrueV
+polsToVal (True, False) = FalseV
+polsToVal (False, True) = FalseV
+polsToVal (False, False) = TrueV
 
 -- | Znajduje wszystkie zmienne bedace w jednej polarnosci
 stripPolarities :: CNF -> HashMap Char TriVal
-stripPolarities = HM.mapMaybe id
+stripPolarities = HM.mapMaybe (fmap polsToVal)
                 . foldl' updateHMData HM.empty
                 . mapMaybe polToVPol
                 . concat
@@ -64,8 +69,8 @@ stripPolarities = HM.mapMaybe id
 isUnitClause :: Clause -> Maybe (Char, TriVal)
 isUnitClause [Pure (Pure (VarE x))] = Just (x, TrueV)
 isUnitClause [Pure (NotE (VarE x))] = Just (x, FalseV)
--- isUnitClause [NotE [Pure (VarE x)]] = Just (x, FalseV)
--- isUnitClause [NotE [NotE (VarE x)]] = Just (x, TrueV)
+-- isUnitClause [NotE (Pure (VarE x))] = Just (x, FalseV)
+-- isUnitClause [NotE (NotE (VarE x))] = Just (x, TrueV)
 isUnitClause _ = Nothing
 
 
@@ -94,7 +99,7 @@ composedHeuristics form =
 -- | jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
 simplifyCNF :: CNF -> CNF
 simplifyCNF = foldl' reduceClauses []
-           . map (simplifyClause)
+           . map simplifyClause
 
 reduceClauses :: CNF -> Clause -> CNF
 reduceClauses acc [] = filterElemF acc FalseV
@@ -193,13 +198,12 @@ satDPLL hist expr =
     Right x -> if x == TrueV then Just (histheur++hist) else Nothing
     Left var ->
       let
-        branch val = satDPLL' (addHist var val) (simplifyCNF (substitudeVar var val expr'))
+        branch val = satDPLL (addHist var val) (simplifyCNF (substitudeVar var val expr'))
       in
         branch TrueV <|> branch Neither <|> branch FalseV
    where
      (histheur, c) = composedHeuristics expr
      expr' = simplifyCNF c
-     satDPLL' h = satDPLL h
      addHist var val = (var,val):(histheur++hist)
 
 

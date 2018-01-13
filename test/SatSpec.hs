@@ -261,10 +261,10 @@ propertySpec info satp tautp =
   describe ("dla dowolnej formuly" ++ info) $ do
     describe "sat" $
       it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku: LSB3P" $
-        mapSize (const 8) . property $ satp LSB3P
+        mapSize (const 12) . property $ satp LSB3P
     describe "taut" $
       it "naiwny i heurystyczny znajduja rozwiazanie dla tego samego przypadku: LSB3P" $
-        mapSize (const 8) . property $ tautp LSB3P
+        mapSize (const 12) . property $ tautp LSB3P
 
 spec :: Spec
 spec = do
@@ -274,4 +274,4 @@ spec = do
   propertySpec "" prop_all_naive_dpll_sat prop_all_naive_dpll_taut
   describe "dla dowolnej formuly" $
     it "jezeli solver sat znajdzie rozwiazanie, to jest ono poprawne" $
-      mapSize (const 10) . property $ prop_lsb3t_sat
+      mapSize (const 12) . property $ prop_lsb3t_sat

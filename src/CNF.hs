@@ -39,25 +39,57 @@ stripLits (BinForm And x y) = stripLits x ++ stripLits y
 stripLits x = [x]
 
 
--- | Przeksztalca wyrazenie bez -> i <-> do postaci normalnej
-convert :: Logic -> Logic
-convert (Not (Not x)) = convert x
+-- | Przeksztalca wyrazenie bez -> i <-> wyrazenia w postaci normalnej.
+-- | Wykorzystywane do uproszczenia wyrazenia pod funktorem przekonaniowym.
+convert :: (TriVal -> TriVal) -> Logic -> Logic
+convert f (Not (Not x)) = convert f x
 -- wartosc stala
-convert (Not (Const x)) = Const (notO x)
+convert f (Not (Const x)) = Const (f x)
 -- De Morgan
-convert (Not (BinForm And x y)) = convert $ BinForm Or (Not x) (Not y)
-convert (Not (BinForm Or x y)) = convert $ BinForm And (Not x) (Not y)
-convert (BinForm Or x y) =
+convert f (Not (BinForm And x y)) = convert f $ BinForm Or (Not x) (Not y)
+convert f (Not (BinForm Or x y)) = convert f $ BinForm And (Not x) (Not y)
+convert f (BinForm Or x y) =
   foldl1' (BinForm And) $
-    BinForm Or <$> stripLits (convert x) <*> stripLits (convert y)
-convert (BinForm And x y) = BinForm And (convert x) (convert y)
-convert x = x
+    BinForm Or <$> stripLits (convert f x) <*> stripLits (convert f y)
+convert f (BinForm And x y) = BinForm And (convert f x) (convert f y)
+convert _ x = x
 
 
+-- | Przeksztalca wyrazenie bez -> i <-> do postaci normalnej.
+-- | Zaklada, ze funktor przechowuje tylko i wylacznie jedna zmienna
+-- | z opcjonalna negacja.
+-- | Wykorzystywane do uproszczenia wyrazenia pod funktorem przekonaniowym.
+convertT :: Logic -> Maybe CNF
+convertT (C (Var x)) = Just [[Pure (Pure (VarE x))]]
+convertT (C (Not (Var x))) = Just [[Pure (NotE (VarE x))]]
+convertT (Not (C (Var x))) = Just [[NotE (Pure (VarE x))]]
+convertT (Not (C (Not (Var x)))) = Just [[NotE (NotE (VarE x))]]
+-- wartosc stala
+convertT (C (Const x)) = Just [[Pure (Pure (Lit x))]]
+convertT (C (Not (Const x))) = Just [[Pure (NotE (Lit x))]]
+convertT (Not (C (Const x))) = Just [[NotE (Pure (Lit x))]]
+convertT (Not (C (Not (Const x)))) = Just [[NotE (NotE (Lit x))]]
+convertT (Not (Not x)) = convertT x
+-- De Morgan
+convertT (Not (BinForm And x y)) = convertT $ BinForm Or (Not x) (Not y)
+convertT (Not (BinForm Or x y)) = convertT $ BinForm And (Not x) (Not y)
+convertT (BinForm Or x y) =
+  foldr (:) [] <$> do
+    a <- convertT x
+    b <- convertT y
+    return $ (++) <$> a <*> b
+convertT (BinForm And x y) = (++) <$> convertT x <*> convertT y
+convertT _ = Nothing -- przy poprawnym wyrazeniu nie powinno tutaj dojsc
+
+
+-- | Konweruje do koniunkcyjnej postaci normalnej
+-- | wszystko znajdujace sie pod funktorem przekonaniowym
+-- | oraz wydziela z funktora pojedyczne zmienne.
 simplifyFunctors :: Logic -> Logic
-simplifyFunctors (C x) = fixc . C . convertI $ x
-simplifyFunctors (Not (C x)) = Not . fixc . C . convertI $ x
+simplifyFunctors (C x) = fixc . C . convert notI $ x
+simplifyFunctors (Not (C x)) = Not . fixc . C . convert notI $ x
 simplifyFunctors x = applyLogic simplifyFunctors x
+
 
 -- | Przestawia funktor C na zewnatrz jezeli to mozliwe
 fixc :: Logic -> Logic
@@ -66,50 +98,13 @@ fixc (C (BinForm Or x y)) = BinForm Or (fixc . C $ x) (fixc . C $ y)
 fixc x = x
 
 
--- | Przeksztalca wyrazenie bez -> i <-> do postaci normalnej
--- | wewnatrz funktora C
-convertI :: Logic -> Logic
-convertI (Not (Not x)) = convertI x
--- wartosc stala
-convertI (Not (Const x)) = Const (notI x)
--- De Morgan
-convertI (Not (BinForm And x y)) = convertI $ BinForm Or (Not x) (Not y)
-convertI (Not (BinForm Or x y)) = convertI $ BinForm And (Not x) (Not y)
-convertI (BinForm Or x y) =
-  foldl1' (BinForm And) $
-    BinForm Or <$> stripLits (convertI x) <*> stripLits (convertI y)
-convertI (BinForm And x y) = BinForm And (convertI x) (convertI y)
-convertI x = x
-
-
 -- | Konwertuje wyrazenie do postaci CNF
 -- | Nie ma zmiennych poza funktorem C() - inaczej zwroci Nothing
 convertToCnf :: Logic -> Maybe CNF
-convertToCnf = run . convert . simplifyFunctors . replaceImpl
-  where
-    run :: Logic -> Maybe CNF
-    run (C x) = (\a -> [[Pure a]]) <$> stripAtom x
-    run (Not (C x)) = (\a -> [[NotE a]]) <$> stripAtom x
-    run (BinForm And x y) = (++) <$> run x <*> run y
-    run (BinForm Or x y) = (: []) <$> ((++) <$> stripF x <*> stripF y)
-    run _ = Nothing -- niepoprawne wyrazenie
-
-    stripF :: Logic -> Maybe Clause
-    stripF (C x) = (\a -> [Pure a]) <$> stripAtom x
-    stripF (Not (C x)) = (\a -> [NotE a]) <$> stripAtom x
-    stripF (BinForm Or x y) = (++) <$> stripF x <*> stripF y
-    stripF _ = Nothing
-
-    stripAtom :: Logic -> Maybe (Negable Atom)
-    stripAtom (Var x) = Just . Pure . VarE $ x
-    stripAtom (Const x) = Just . Pure . Lit $ x
-    stripAtom (Not (Var x)) = Just . NotE . VarE $ x
-    stripAtom (Not (Const x)) = Just . NotE . Lit $ x
-    stripAtom _ = Nothing
+convertToCnf = convertT . simplifyFunctors . replaceImpl
 
 
 type CNF = [Clause]
--- moze inny kontener niz lista? (set? sequence?)
 type Clause = [Elem]
 type Elem = Negable (Negable Atom)
 
