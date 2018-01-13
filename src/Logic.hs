@@ -91,12 +91,13 @@ instance Arbitrary Logic where
 
 
 genLogic :: Int -> Gen Logic
-genLogic n = logic' (ceiling (fromIntegral n/2 :: Float))
+genLogic n = logic' (n `div` 2)
+
 
 -- | Generator logiki LSB3
 logic' :: Int -> Gen Logic
 logic' 0 = C <$> sampleLogic' 0
-logic' n = oneof [ Not <$> logic' n, C <$> sampleLogic' n
+logic' n = oneof [ Not <$> logic' (n-1), C <$> sampleLogic' n
                  , BinForm <$> elements [Or, And] <*> subtree <*> subtree ]
                      where
                        subtree = logic' (n `div` 2)
@@ -106,7 +107,7 @@ logic' n = oneof [ Not <$> logic' n, C <$> sampleLogic' n
 sampleLogic' :: Int -> Gen Logic
 sampleLogic' 0 = oneof [ Var <$> suchThat arbitrary isLower
                        , Not . Var <$> suchThat arbitrary isLower]
-sampleLogic' n = oneof [ Not <$> sampleLogic' n
+sampleLogic' n = oneof [ Not <$> sampleLogic' (n-1)
                        , BinForm <$> elements [Or, And] <*> subtree <*> subtree ]
                            where
                              subtree = sampleLogic' (n `div` 2)

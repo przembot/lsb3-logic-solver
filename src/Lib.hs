@@ -1,11 +1,11 @@
 module Lib (
     module Logic
-  , module NF
+  , module CNF
   , module SAT
   , module Parser
   ) where
 
 import Logic
 import Parser
-import NF
+import CNF
 import SAT

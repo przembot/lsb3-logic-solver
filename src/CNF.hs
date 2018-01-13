@@ -4,15 +4,15 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE LambdaCase #-}
-module NF (
-    convertToNf
+module CNF (
+    convertToCnf
   , unNegable
   , stripAtoms
   , filterVars
   , modifyAllAtoms
   , modifyAllVars
-  , nfToLogic
-  , NF
+  , cnfToLogic
+  , CNF
   , Clause
   , Elem
   , Negable (..)
@@ -51,24 +51,19 @@ convert (BinForm Or x y) =
   foldl1' (BinForm And) $
     BinForm Or <$> stripLits (convert x) <*> stripLits (convert y)
 convert (BinForm And x y) = BinForm And (convert x) (convert y)
-convert (C x) = fixc . C . convertI $ x
-convert (Not (C x)) = fixnc . C . convertI $ x
 convert x = x
 
+
+simplifyFunctors :: Logic -> Logic
+simplifyFunctors (C x) = fixc . C . convertI $ x
+simplifyFunctors (Not (C x)) = Not . fixc . C . convertI $ x
+simplifyFunctors x = applyLogic simplifyFunctors x
 
 -- | Przestawia funktor C na zewnatrz jezeli to mozliwe
 fixc :: Logic -> Logic
 fixc (C (BinForm And x y)) = BinForm And (fixc . C $ x) (fixc . C $ y)
+fixc (C (BinForm Or x y)) = BinForm Or (fixc . C $ x) (fixc . C $ y)
 fixc x = x
-
-
--- | Przestawia funktor C na zewnatrz w wyrazeniu ~C(a * b * c * ..)
--- | do postaci ~C(a) + ~C(b) + ..
-fixnc :: Logic -> Logic
-fixnc (C (BinForm And x y)) =
-  BinForm Or (fixnc . C $ x) (fixnc . C $ y)
-fixnc (C x) = Not . C $ x
-fixnc x = x
 
 
 -- | Przeksztalca wyrazenie bez -> i <-> do postaci normalnej
@@ -80,7 +75,6 @@ convertI (Not (Const x)) = Const (notI x)
 -- De Morgan
 convertI (Not (BinForm And x y)) = convertI $ BinForm Or (Not x) (Not y)
 convertI (Not (BinForm Or x y)) = convertI $ BinForm And (Not x) (Not y)
--- TODO: is not valid in LSB3_T
 convertI (BinForm Or x y) =
   foldl1' (BinForm And) $
     BinForm Or <$> stripLits (convertI x) <*> stripLits (convertI y)
@@ -88,37 +82,36 @@ convertI (BinForm And x y) = BinForm And (convertI x) (convertI y)
 convertI x = x
 
 
--- | Konwertuje wyrazenie do postaci NF
+-- | Konwertuje wyrazenie do postaci CNF
 -- | Nie ma zmiennych poza funktorem C() - inaczej zwroci Nothing
-convertToNf :: Logic -> Maybe NF
-convertToNf = run . convert . replaceImpl
+convertToCnf :: Logic -> Maybe CNF
+convertToCnf = run . convert . simplifyFunctors . replaceImpl
   where
-    run :: Logic -> Maybe NF
-    run (C x) = (\a -> [[Pure a]]) <$> stripElems x
-    run (Not (C x)) = (\a -> [[NotE a]]) <$> stripElems x
+    run :: Logic -> Maybe CNF
+    run (C x) = (\a -> [[Pure a]]) <$> stripAtom x
+    run (Not (C x)) = (\a -> [[NotE a]]) <$> stripAtom x
     run (BinForm And x y) = (++) <$> run x <*> run y
     run (BinForm Or x y) = (: []) <$> ((++) <$> stripF x <*> stripF y)
     run _ = Nothing -- niepoprawne wyrazenie
 
     stripF :: Logic -> Maybe Clause
-    stripF (C x) = (\a -> [Pure a]) <$> stripElems x
-    stripF (Not (C x)) = (\a -> [NotE a]) <$> stripElems x
+    stripF (C x) = (\a -> [Pure a]) <$> stripAtom x
+    stripF (Not (C x)) = (\a -> [NotE a]) <$> stripAtom x
     stripF (BinForm Or x y) = (++) <$> stripF x <*> stripF y
     stripF _ = Nothing
 
-    stripElems :: Logic -> Maybe [Elem]
-    stripElems (Const a) = Just [Pure (Lit a)]
-    stripElems (Not (Const a)) = Just [NotE (Lit a)]
-    stripElems (Var a) = Just [Pure (VarE a)]
-    stripElems (Not (Var a)) = Just [NotE (VarE a)]
-    stripElems (BinForm Or x y) = (++) <$> stripElems x <*> stripElems y
-    stripElems _ = Nothing -- niepoprawne wyrazenie
+    stripAtom :: Logic -> Maybe (Negable Atom)
+    stripAtom (Var x) = Just . Pure . VarE $ x
+    stripAtom (Const x) = Just . Pure . Lit $ x
+    stripAtom (Not (Var x)) = Just . NotE . VarE $ x
+    stripAtom (Not (Const x)) = Just . NotE . Lit $ x
+    stripAtom _ = Nothing
 
 
-type NF = [Clause]
+type CNF = [Clause]
 -- moze inny kontener niz lista? (set? sequence?)
-type Clause = [Negable [Elem]]
-type Elem = Negable Atom
+type Clause = [Elem]
+type Elem = Negable (Negable Atom)
 
 
 unNegable :: Negable x -> x
@@ -131,14 +124,14 @@ data Negable x =
   | NotE x
   deriving (Show, Eq, Functor, Foldable, Traversable)
 
--- | Pojedynczy atom wystepujacy w wyrazeniu NF
+-- | Pojedynczy atom wystepujacy w wyrazeniu CNF
 data Atom =
     Lit TriVal
   | VarE Char
   deriving (Show, Eq)
 
-stripAtoms :: NF -> [Atom]
-stripAtoms = map unNegable . concatMap unNegable . concat
+stripAtoms :: CNF -> [Atom]
+stripAtoms = map (unNegable . unNegable) . concat
 
 getCharFromAtom :: Atom -> Maybe Char
 getCharFromAtom (VarE x) = Just x
@@ -147,10 +140,10 @@ getCharFromAtom _ = Nothing
 filterVars :: [Atom] -> String
 filterVars = mapMaybe getCharFromAtom
 
-modifyAllAtoms :: (Atom -> Atom) -> NF -> NF
-modifyAllAtoms = fmap . fmap . fmap . fmap . fmap
+modifyAllAtoms :: (Atom -> Atom) -> CNF -> CNF
+modifyAllAtoms = fmap . fmap . fmap . fmap
 
-modifyAllVars :: (Char -> Atom) -> NF -> NF
+modifyAllVars :: (Char -> Atom) -> CNF -> CNF
 modifyAllVars f = modifyAllAtoms
                     (\case
                       VarE x -> f x
@@ -161,14 +154,14 @@ modifyAllVars f = modifyAllAtoms
 -- | reprezentujacej postac normalna
 -- | do struktury danych reprezentujacej
 -- | dowolne wyrazenie logiczne
-nfToLogic :: NF -> Logic
-nfToLogic = foldl1' (BinForm And)
+cnfToLogic :: CNF -> Logic
+cnfToLogic = foldl1' (BinForm And)
            . map clauseToLogic
     where
       clauseToLogic = foldl1' (BinForm Or)
                     . map funcToLogic
-      funcToLogic (Pure l) = C $ foldl1' (BinForm Or) (map natomToLogic l)
-      funcToLogic (NotE l) = Not $ C $ foldl1' (BinForm Or) (map natomToLogic l)
+      funcToLogic (Pure l) = C (natomToLogic l)
+      funcToLogic (NotE l) = Not $ C (natomToLogic l)
       natomToLogic (Pure x) = atomToLogic x
       natomToLogic (NotE x) = Not $ atomToLogic x
       atomToLogic (Lit x) = Const x

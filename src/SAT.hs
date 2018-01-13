@@ -18,7 +18,7 @@ import Data.Foldable (foldl')
 import Text.Parsec (ParseError)
 
 import Logic
-import NF
+import CNF
 
 -- | Porownanie polarnosci - jezeli sa zgodne, to zapamietuje polarnosc.
 -- | W przeciwnym przypadku zapominam.
@@ -52,19 +52,18 @@ polToVPol _ = Nothing
 
 
 -- | Znajduje wszystkie zmienne bedace w jednej polarnosci
-stripPolarities :: NF -> HashMap Char TriVal
+stripPolarities :: CNF -> HashMap Char TriVal
 stripPolarities = HM.mapMaybe id
                 . foldl' updateHMData HM.empty
                 . mapMaybe polToVPol
-                . concatMap sequence
                 . concat
 
 
 -- | Czy klauzula zawiera tylko jedna zmienna - i jezli tak to jaka oraz
 -- | co za nia nalezy podstawic
 isUnitClause :: Clause -> Maybe (Char, TriVal)
-isUnitClause [Pure [Pure (VarE x)]] = Just (x, TrueV)
-isUnitClause [Pure [NotE (VarE x)]] = Just (x, FalseV)
+isUnitClause [Pure (Pure (VarE x))] = Just (x, TrueV)
+isUnitClause [Pure (NotE (VarE x))] = Just (x, FalseV)
 -- isUnitClause [NotE [Pure (VarE x)]] = Just (x, FalseV)
 -- isUnitClause [NotE [NotE (VarE x)]] = Just (x, TrueV)
 isUnitClause _ = Nothing
@@ -72,7 +71,7 @@ isUnitClause _ = Nothing
 
 -- | Mapa zawierajaca informacje o mozliwych podstawieniach przy uzyciu
 -- | Unit Propagation
-assignments :: NF -> HashMap Char TriVal
+assignments :: CNF -> HashMap Char TriVal
 assignments = HM.fromList
             . mapMaybe isUnitClause
 
@@ -81,7 +80,7 @@ assignments = HM.fromList
 -- | Literal elimination: Podstaw za zmienna bedaca w jednej polarnosci w calym wyrazeniu
 -- | odpowiednia stala wartosc
 -- | Unit propagation: Podstawia wartosci za zmienne wystepujace samodzielnie
-composedHeuristics :: NF -> (Interpretation, NF)
+composedHeuristics :: CNF -> (Interpretation, CNF)
 composedHeuristics form =
   let
     subsmap = assignments form `HM.union` stripPolarities form
@@ -91,108 +90,91 @@ composedHeuristics form =
                   _ -> VarE x
     ) form)
 
--- | Upraszcza wedle mozliwosci wyrazenie NF,
+-- | Upraszcza wedle mozliwosci wyrazenie CNF,
 -- | jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
-simplifyNF :: ([Elem] -> [Elem]) -- ^ funkcja redukujaca wartosci wewnatrz funktora, zalezna od wybranego typu logiki T lub P
-            -> NF -> NF
-simplifyNF se = foldl' reduceClauses []
-               . map (simplifyClause se)
+simplifyCNF :: CNF -> CNF
+simplifyCNF = foldl' reduceClauses []
+           . map (simplifyClause)
 
-reduceClauses :: NF -> Clause -> NF
+reduceClauses :: CNF -> Clause -> CNF
 reduceClauses acc [] = filterElemF acc FalseV
-reduceClauses acc [Pure []] = filterElemF acc FalseV
-reduceClauses acc [NotE []] = filterElemF acc TrueV
-reduceClauses acc [Pure [Pure (Lit x)]] = filterElemF acc x
-reduceClauses acc [Pure [NotE (Lit x)]] = filterElemF acc (notI x)
-reduceClauses acc [NotE [Pure (Lit x)]] = filterElemF acc (notO x)
-reduceClauses acc [NotE [NotE (Lit x)]] = filterElemF acc (notO . notI $ x)
+reduceClauses acc [Pure (Pure (Lit x))] = filterElemF acc x
+reduceClauses acc [Pure (NotE (Lit x))] = filterElemF acc (notI x)
+reduceClauses acc [NotE (Pure (Lit x))] = filterElemF acc (notO x)
+reduceClauses acc [NotE (NotE (Lit x))] = filterElemF acc (notO . notI $ x)
 reduceClauses acc a = a:acc
 
 
--- | Wyrazenie NF oznaczajace nieudana probe podstawien wartosci
-failSat :: NF
-failSat = [[Pure [Pure (Lit FalseV)]]]
+-- | Wyrazenie CNF oznaczajace nieudana probe podstawien wartosci
+failSat :: CNF
+failSat = [[Pure (Pure (Lit FalseV))]]
 
 
 -- | Funkcja upraszczajaca klauzule
-simplifyClause :: ([Elem] -> [Elem])
-               -> Clause -> Clause
-simplifyClause se = foldl' reduceClause []
-                  . map (fmap se)
+simplifyClause :: Clause -> Clause
+simplifyClause = foldl' reduceClause []
+               . simplifyElems
 
 
-reduceClause :: Clause -> Negable [Elem] -> Clause
-reduceClause acc (Pure []) = filterElemT acc FalseV
-reduceClause acc (NotE []) = filterElemT acc TrueV
-reduceClause acc (Pure [Pure (Lit x)]) = filterElemT acc x
-reduceClause acc (Pure [NotE (Lit x)]) = filterElemT acc (notI x)
-reduceClause acc (NotE [Pure (Lit x)]) = filterElemT acc (notO x)
-reduceClause acc (NotE [NotE (Lit x)]) = filterElemT acc (notO . notI $ x)
+reduceClause :: Clause -> Elem -> Clause
+reduceClause acc (Pure (Pure (Lit x))) = filterElemT acc x
+reduceClause acc (Pure (NotE (Lit x))) = filterElemT acc (notI x)
+reduceClause acc (NotE (Pure (Lit x))) = filterElemT acc (notO x)
+reduceClause acc (NotE (NotE (Lit x))) = filterElemT acc (notO . notI $ x)
 reduceClause acc a = a:acc
 
 filterElemT :: Clause -> TriVal -> Clause
 filterElemT _ TrueV = trueClause
 filterElemT acc _ = acc
 
-filterElemF :: NF -> TriVal -> NF
+filterElemF :: CNF -> TriVal -> CNF
 filterElemF acc TrueV = acc
 filterElemF _ _ = failSat
 
 -- | Klauzula oznaczajaca udane podstawienie wewnatrz niej
 trueClause :: Clause
-trueClause = [Pure [Pure (Lit TrueV)]]
+trueClause = [Pure (Pure (Lit TrueV))]
 
 simplifyElems :: [Elem] -> [Elem]
 simplifyElems = foldl' simplifyElem []
 
 simplifyElem :: [Elem] -> Elem -> [Elem]
-simplifyElem [Pure (Lit TrueV)] _ = [Pure (Lit TrueV)] -- klauzula juz prawdziwa
-simplifyElem _ (Pure (Lit TrueV)) = [Pure (Lit TrueV)]
-simplifyElem _ (NotE (Lit FalseV)) = [Pure (Lit TrueV)]
--- LSB3_P, 1/2 jest obojetna
-simplifyElem acc (Pure (Lit _)) = acc
-simplifyElem acc (NotE (Lit _)) = acc
+-- klauzula juz prawdziwa
+simplifyElem [Pure (Pure (Lit TrueV))] _ = [Pure (Pure (Lit TrueV))]
+-- wynika z tabel prawdy
+simplifyElem _ (Pure (Pure (Lit TrueV))) = [Pure (Pure (Lit TrueV))]
+simplifyElem _ (NotE (NotE (Lit TrueV))) = [Pure (Pure (Lit TrueV))]
+simplifyElem acc (NotE (Pure (Lit TrueV))) = acc
+simplifyElem acc (Pure (NotE (Lit TrueV))) = acc
+
+simplifyElem acc (Pure (Pure (Lit Neither))) = acc
+simplifyElem _ (NotE (NotE (Lit Neither))) = [Pure (Pure (Lit TrueV))]
+simplifyElem _ (NotE (Pure (Lit Neither))) = [Pure (Pure (Lit TrueV))]
+simplifyElem acc (Pure (NotE (Lit Neither))) = acc
+
+simplifyElem acc (Pure (Pure (Lit FalseV))) = acc
+simplifyElem acc (NotE (NotE (Lit FalseV))) = acc
+simplifyElem _ (NotE (Pure (Lit FalseV))) = [Pure (Pure (Lit TrueV))]
+simplifyElem _ (Pure (NotE (Lit FalseV))) = [Pure (Pure (Lit TrueV))]
 simplifyElem acc a = a:acc
 
-simplifyElemsT :: [Elem] -> [Elem]
-simplifyElemsT = (\(a, elems) -> -- jezeli zostal znaleziony jeden Neither, to dolacz go spowrotem)
-                   if a then Pure (Lit Neither):elems
-                   else elems)
-               . foldl' simplifyElemT (False, [])
-
-simplifyElemT :: (Bool, [Elem]) -> Elem -> (Bool, [Elem])
--- dla ponizszych 3 przypadkow jest bez znaczenia, czy wczesniej wystapilo
--- Neither, gdyz i tak klauzula jest prawdziwa
-simplifyElemT acc@(_, [Pure (Lit TrueV)]) _ = acc
-simplifyElemT (_, _) (Pure (Lit TrueV)) = (False, [Pure (Lit TrueV)])
-simplifyElemT (_, _) (NotE (Lit FalseV)) = (False, [Pure (Lit TrueV)])
-simplifyElemT acc (Pure (Lit FalseV)) = acc
-simplifyElemT acc (NotE (Lit TrueV)) = acc
--- LSB3_T, trzeba pamietac i brac pod uwage wystapienie 1/2
-simplifyElemT (s, acc) (Pure (Lit Neither)) =
-  if s then (False, [Pure (Lit TrueV)])
-       else (True, acc)
-simplifyElemT (s, acc) (NotE (Lit Neither)) =
-  if s then (False, [Pure (Lit TrueV)])
-       else (True, acc)
-simplifyElemT (s, acc) a = (s, a:acc)
 
 -- | Znajdz w wyrazeniu, jezeli istnieje, nieprzypisana zmienna
-findVar :: NF -> Maybe Char
+findVar :: CNF -> Maybe Char
 findVar = listToMaybe . filterVars . stripAtoms
 
 
 -- | Jezeli w wyrazeniu znajduje sie wolna zmienna, zwraca ja
 -- | jezeli nie, to zwraca wartosc calego wyrazenia
-isSimplified :: NF -> Either Char TriVal
+isSimplified :: CNF -> Either Char TriVal
 isSimplified [] = Right TrueV
-isSimplified [[Pure [Pure (Lit x)]]] = Right x
+isSimplified [[Pure (Pure (Lit x))]] = Right x
 isSimplified form = case findVar form of
                       (Just x) -> Left x
                       _ -> Right FalseV
 
 -- | Podstaw wartosc za dana zmienna
-substitudeVar :: Char -> TriVal -> NF -> NF
+substitudeVar :: Char -> TriVal -> CNF -> CNF
 substitudeVar var val = modifyAllVars
                           (\v -> if v == var then Lit val
                                              else VarE v
@@ -205,20 +187,19 @@ type Interpretation = [(Char, TriVal)]
 
 -- | Glowny silnik rozwiazywania problemu SAT przy uzyciu heurystyk
 -- | zgodnie z algorytmem DPLL dostosowanym do logiki LSB3
-satDPLL :: Interpretation -> ([Elem] -> [Elem]) -> NF -> Maybe Interpretation
-satDPLL hist se expr =
+satDPLL :: Interpretation -> CNF -> Maybe Interpretation
+satDPLL hist expr =
   case isSimplified expr' of
     Right x -> if x == TrueV then Just (histheur++hist) else Nothing
     Left var ->
       let
-        branch val = satDPLL' (addHist var val) (simplifyNF' (substitudeVar var val expr'))
+        branch val = satDPLL' (addHist var val) (simplifyCNF (substitudeVar var val expr'))
       in
         branch TrueV <|> branch Neither <|> branch FalseV
    where
      (histheur, c) = composedHeuristics expr
-     expr' = simplifyNF' c
-     simplifyNF' = simplifyNF se
-     satDPLL' h = satDPLL h se
+     expr' = simplifyCNF c
+     satDPLL' h = satDPLL h
      addHist var val = (var,val):(histheur++hist)
 
 
@@ -243,7 +224,7 @@ satNaive lt hist expr =
 -- | Opakowanie na bledy mogace wystapic przy probie uzycia programu
 data Error =
     ParseFailure ParseError
-  | NFConversionFail
+  | CNFConversionFail
   | NoInterpretationFound
   | TautologyFail Interpretation
   deriving (Show, Eq)
@@ -261,11 +242,11 @@ satToTautRes (Left x) = Left x
 satToTautRes (Right x) = Left . TautologyFail $ x
 
 
-runSat :: ([Elem] -> [Elem]) -> Logic -> SatResult
-runSat f = (>>= throwOnNothing NoInterpretationFound)
-         . fmap (satDPLL [] f)
-         . throwOnNothing NFConversionFail
-         . convertToNf
+runSat :: Logic -> SatResult
+runSat = (>>= throwOnNothing NoInterpretationFound)
+       . fmap (satDPLL [])
+       . throwOnNothing CNFConversionFail
+       . convertToCnf
 
 
 runNaiveSat :: LogicType -> Logic -> SatResult
@@ -277,15 +258,12 @@ data SolverType = Naive
                 | DPLL
                 deriving (Eq, Show)
 
-uniLogicMapper :: LogicType -> [Elem] -> [Elem]
-uniLogicMapper LSB3T = simplifyElemsT
-uniLogicMapper LSB3P = simplifyElems
+
+uniRunSat :: LogicType -> SolverType -> Logic -> SatResult
+uniRunSat LSB3T _ = runNaiveSat LSB3T
+uniRunSat LSB3P DPLL = runSat
+uniRunSat LSB3P Naive = runNaiveSat LSB3P
 
 
-uniRunSat :: SolverType -> LogicType -> Logic -> SatResult
-uniRunSat Naive = runNaiveSat
-uniRunSat DPLL = runSat . uniLogicMapper
-
-
-uniRunTaut :: SolverType -> LogicType -> Logic -> TautResult
-uniRunTaut s l = satToTautRes . uniRunSat s l . Not
+uniRunTaut :: LogicType -> SolverType -> Logic -> TautResult
+uniRunTaut l s = satToTautRes . uniRunSat l s . Not

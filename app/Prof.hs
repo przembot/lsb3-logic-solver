@@ -15,4 +15,4 @@ main = do
     ]
     -}
   (Right !x) <- parseLogic <$> T.readFile "bench/bigsample"
-  print $ uniRunSat DPLL LSB3P x
+  print $ uniRunSat LSB3P DPLL x
