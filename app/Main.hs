@@ -27,8 +27,8 @@ uniHandler ft fp wrap expr =
   in wrap (parsedexpr >>= ft, parsedexpr >>= fp)
 
 uniRaport fr rest resp =
-  T.concat ["Logika LSB3_T:\n", fr rest,
-            "Logika LSB3_P:\n", fr resp]
+  T.concat ["Logika LSB3T:\n", fr rest,
+            "Logika LSB3P:\n", fr resp]
 
 satHandler :: Text -> LSBSatResult
 satHandler = uniHandler (uniRunSat LSB3T DPLL) (uniRunSat LSB3P DPLL) LSBSatResult
@@ -43,6 +43,7 @@ tautRaport :: LSBTautResult -> Text
 tautRaport (LSBTautResult (rest, resp)) = uniRaport tautSingleReport rest resp
 
 satSingleReport :: SatResult -> Text
+satSingleReport (Left NoInterpretationFound) = "Nie znaleziono wartościowania\n"
 satSingleReport (Left e) = T.concat ["Nastąpił błąd:\n", tShow e, "\n\n"]
 satSingleReport (Right x) =
   T.append "Udane podstawienie:\n"

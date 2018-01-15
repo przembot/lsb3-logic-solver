@@ -69,8 +69,6 @@ satFormulas =
 satTFormulas :: [Logic]
 satTFormulas =
   [ BinForm And (Not (C (Var 'a'))) (C (BinForm Or (Var 'a') (Const Neither)))
-  , BinForm Or (Not (C (BinForm Or (Const TrueV) (Not (Var 'a')))))
-               (C (BinForm Or (Not (Const Neither)) (Not (Var 'b'))))
   ]
 
 -- | Formuly niespelnialne w LSB3

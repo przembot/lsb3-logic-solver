@@ -16,7 +16,7 @@ Window {
     Column {
       anchors.centerIn: parent
       Rectangle {
-        width: window.width*2/3
+        width: window.width*3/4
         height: input.height
         border.width: 2
         border.color: "black"
@@ -63,6 +63,18 @@ Window {
         InputButton {
           textDisplayed: ")"
         }
+        InputButton {
+          textDisplayed: "1"
+          textInserted: "T"
+        }
+        InputButton {
+          textDisplayed: "1/2"
+          textInserted: "N"
+        }
+        InputButton {
+          textDisplayed: "0"
+          textInserted: "F"
+        }
       }
 
       // przyciski do uruchamiania solvera
@@ -83,9 +95,11 @@ Window {
       TextArea {
         anchors.horizontalCenter: parent.horizontalCenter
         id: resultarea
-        width: window.width*2/3
+        width: window.width*3/4
+        height: width*3/4
         readOnly: true
         text: result // z haskella
+        font.pointSize: 14
       }
     }
   }

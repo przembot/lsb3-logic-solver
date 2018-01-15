@@ -36,9 +36,9 @@ data LogicType = LSB3T
 
 
 instance Show TriVal where
-  show TrueV = "T"
-  show Neither = "N"
-  show FalseV = "F"
+  show TrueV = "1"
+  show Neither = "1/2"
+  show FalseV = "0"
 
 -- | Operacje dwuargumentowe na logice
 data BinaryOp =

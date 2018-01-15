@@ -69,8 +69,6 @@ stripPolarities = HM.mapMaybe (fmap polsToVal)
 isUnitClause :: Clause -> Maybe (Char, TriVal)
 isUnitClause [Pure (Pure (VarE x))] = Just (x, TrueV)
 isUnitClause [Pure (NotE (VarE x))] = Just (x, FalseV)
--- isUnitClause [NotE (Pure (VarE x))] = Just (x, FalseV)
--- isUnitClause [NotE (NotE (VarE x))] = Just (x, TrueV)
 isUnitClause _ = Nothing
 
 
@@ -191,11 +189,13 @@ type Interpretation = [(Char, TriVal)]
 
 
 -- | Glowny silnik rozwiazywania problemu SAT przy uzyciu heurystyk
--- | zgodnie z algorytmem DPLL dostosowanym do logiki LSB3
+-- | zgodnie z algorytmem DPLL dostosowanym do logiki LSB3_P
 satDPLL :: Interpretation -> CNF -> Maybe Interpretation
 satDPLL hist expr =
   case isSimplified expr' of
-    Right x -> if x == TrueV then Just (histheur++hist) else Nothing
+    Right x -> if x == TrueV
+                  then Just (histheur++hist)
+                  else Nothing
     Left var ->
       let
         branch val = satDPLL (addHist var val) (simplifyCNF (substitudeVar var val expr'))

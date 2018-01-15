@@ -19,6 +19,7 @@ module CNF (
   , Atom (..)
   ) where
 
+import Control.Applicative (liftA2)
 import Data.Maybe (mapMaybe)
 import Data.List (foldl1')
 import Logic
@@ -41,53 +42,50 @@ stripLits x = [x]
 
 -- | Przeksztalca wyrazenie bez -> i <-> wyrazenia w postaci normalnej.
 -- | Wykorzystywane do uproszczenia wyrazenia pod funktorem przekonaniowym.
-convert :: (TriVal -> TriVal) -> Logic -> Logic
-convert f (Not (Not x)) = convert f x
+convertC :: Logic -> Logic
+convertC (Not (Not x)) = convertC x
 -- wartosc stala
-convert f (Not (Const x)) = Const (f x)
+convertC (Not (Const x)) = Const (notI x)
 -- De Morgan
-convert f (Not (BinForm And x y)) = convert f $ BinForm Or (Not x) (Not y)
-convert f (Not (BinForm Or x y)) = convert f $ BinForm And (Not x) (Not y)
-convert f (BinForm Or x y) =
+convertC (Not (BinForm And x y)) = convertC $ BinForm Or (Not x) (Not y)
+convertC (Not (BinForm Or x y)) = convertC $ BinForm And (Not x) (Not y)
+convertC (BinForm Or x y) =
   foldl1' (BinForm And) $
-    BinForm Or <$> stripLits (convert f x) <*> stripLits (convert f y)
-convert f (BinForm And x y) = BinForm And (convert f x) (convert f y)
-convert _ x = x
+    BinForm Or <$> stripLits (convertC x) <*> stripLits (convertC y)
+convertC (BinForm And x y) = BinForm And (convertC x) (convertC y)
+convertC x = x
 
 
 -- | Przeksztalca wyrazenie bez -> i <-> do postaci normalnej.
 -- | Zaklada, ze funktor przechowuje tylko i wylacznie jedna zmienna
 -- | z opcjonalna negacja.
 -- | Wykorzystywane do uproszczenia wyrazenia pod funktorem przekonaniowym.
-convertT :: Logic -> Maybe CNF
-convertT (C (Var x)) = Just [[Pure (Pure (VarE x))]]
-convertT (C (Not (Var x))) = Just [[Pure (NotE (VarE x))]]
-convertT (Not (C (Var x))) = Just [[NotE (Pure (VarE x))]]
-convertT (Not (C (Not (Var x)))) = Just [[NotE (NotE (VarE x))]]
+convert :: Logic -> Maybe CNF
+convert (C (Var x)) = Just [[Pure (Pure (VarE x))]]
+convert (C (Not (Var x))) = Just [[Pure (NotE (VarE x))]]
+convert (Not (C (Var x))) = Just [[NotE (Pure (VarE x))]]
+convert (Not (C (Not (Var x)))) = Just [[NotE (NotE (VarE x))]]
 -- wartosc stala
-convertT (C (Const x)) = Just [[Pure (Pure (Lit x))]]
-convertT (C (Not (Const x))) = Just [[Pure (NotE (Lit x))]]
-convertT (Not (C (Const x))) = Just [[NotE (Pure (Lit x))]]
-convertT (Not (C (Not (Const x)))) = Just [[NotE (NotE (Lit x))]]
-convertT (Not (Not x)) = convertT x
+convert (C (Const x)) = Just [[Pure (Pure (Lit x))]]
+convert (C (Not (Const x))) = Just [[Pure (NotE (Lit x))]]
+convert (Not (C (Const x))) = Just [[NotE (Pure (Lit x))]]
+convert (Not (C (Not (Const x)))) = Just [[NotE (NotE (Lit x))]]
+convert (Not (Not x)) = convert x
 -- De Morgan
-convertT (Not (BinForm And x y)) = convertT $ BinForm Or (Not x) (Not y)
-convertT (Not (BinForm Or x y)) = convertT $ BinForm And (Not x) (Not y)
-convertT (BinForm Or x y) =
-  foldr (:) [] <$> do
-    a <- convertT x
-    b <- convertT y
-    return $ (++) <$> a <*> b
-convertT (BinForm And x y) = (++) <$> convertT x <*> convertT y
-convertT _ = Nothing -- przy poprawnym wyrazeniu nie powinno tutaj dojsc
+convert (Not (BinForm And x y)) = convert $ BinForm Or (Not x) (Not y)
+convert (Not (BinForm Or x y)) = convert $ BinForm And (Not x) (Not y)
+convert (BinForm Or x y) =
+  foldr (:) [] <$> (liftA2 (++) <$> convert x <*> convert y)
+convert (BinForm And x y) = (++) <$> convert x <*> convert y
+convert _ = Nothing -- przy poprawnym wyrazeniu nie powinno tutaj dojsc
 
 
 -- | Konweruje do koniunkcyjnej postaci normalnej
 -- | wszystko znajdujace sie pod funktorem przekonaniowym
 -- | oraz wydziela z funktora pojedyczne zmienne.
 simplifyFunctors :: Logic -> Logic
-simplifyFunctors (C x) = fixc . C . convert notI $ x
-simplifyFunctors (Not (C x)) = Not . fixc . C . convert notI $ x
+simplifyFunctors (C x) = fixc . C . convertC $ x
+simplifyFunctors (Not (C x)) = Not . fixc . C . convertC $ x
 simplifyFunctors x = applyLogic simplifyFunctors x
 
 
@@ -101,7 +99,7 @@ fixc x = x
 -- | Konwertuje wyrazenie do postaci CNF
 -- | Nie ma zmiennych poza funktorem C() - inaczej zwroci Nothing
 convertToCnf :: Logic -> Maybe CNF
-convertToCnf = convertT . simplifyFunctors . replaceImpl
+convertToCnf = convert . simplifyFunctors . replaceImpl
 
 
 type CNF = [Clause]
