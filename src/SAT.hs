@@ -216,7 +216,7 @@ satNaive lt hist expr =
       let
         branch val = satNaive' (addHist var val) (substitudeNaiveVar var val expr)
       in
-         branch TrueV <|> branch Neither <|> branch FalseV
+        branch TrueV <|> branch Neither <|> branch FalseV
     Nothing ->
       if evalLogic lt expr == Just TrueV
          then Just hist

@@ -75,7 +75,7 @@ convert (Not (Not x)) = convert x
 convert (Not (BinForm And x y)) = convert $ BinForm Or (Not x) (Not y)
 convert (Not (BinForm Or x y)) = convert $ BinForm And (Not x) (Not y)
 convert (BinForm Or x y) =
-  foldr (:) [] <$> (liftA2 (++) <$> convert x <*> convert y)
+  liftA2 (++) <$> convert x <*> convert y
 convert (BinForm And x y) = (++) <$> convert x <*> convert y
 convert _ = Nothing -- przy poprawnym wyrazeniu nie powinno tutaj dojsc
 
@@ -159,5 +159,3 @@ cnfToLogic = foldl1' (BinForm And)
       natomToLogic (NotE x) = Not $ atomToLogic x
       atomToLogic (Lit x) = Const x
       atomToLogic (VarE x) = Var x
-
-

@@ -1,6 +1,8 @@
 {-
    Implementacja logiki LSB3
 -}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Logic (
     TriVal (..)
   , BinaryOp (..)
@@ -12,10 +14,13 @@ module Logic (
   , evalLogic
   , findUnassignedVar
   , substitudeNaiveVar
+  , generateBigSample
   ) where
 
 import Test.QuickCheck.Arbitrary
 import Test.QuickCheck.Gen
+import GHC.Generics (Generic)
+import Control.DeepSeq (NFData)
 
 import Data.Char (isLower)
 import Control.Applicative ((<|>))
@@ -26,7 +31,7 @@ data TriVal =
     TrueV
   | Neither
   | FalseV
-  deriving Eq
+  deriving (Eq, Generic, NFData)
 
 
 -- | Mozliwe warianty logiki
@@ -91,7 +96,7 @@ instance Arbitrary Logic where
 
 
 genLogic :: Int -> Gen Logic
-genLogic n = logic' (n `div` 2)
+genLogic = logic' . (`div` 2)
 
 
 -- | Generator logiki LSB3
@@ -114,7 +119,7 @@ sampleLogic' n = oneof [ Not <$> sampleLogic' (n-1)
 
 
 generateBigSample :: IO Logic
-generateBigSample = generate . resize 50 $ arbitrary
+generateBigSample = generate . resize 32 $ arbitrary
 
 -- | Znajduje zmienna zdaniowa w formule
 findUnassignedVar :: Logic -> Maybe Char

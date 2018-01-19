@@ -1,69 +1,28 @@
+{-# LANGUAGE BangPatterns #-}
 module Main where
 
+import Lib
 import Data.Text.IO as T (readFile)
 import Criterion.Main
 
-import Lib
+toMaybe :: Either e a -> Maybe a
+toMaybe (Right x) = Just x
+toMaybe _ = Nothing
 
+singleGroup :: SolverType -> [(Int, Logic)] -> [Benchmark]
+singleGroup st = map
+  (\(num, form) -> bench ("przyklad "++show num) $ nf (toMaybe . uniRunSat LSB3P st) form)
 
-tautFormulas :: [Logic]
-tautFormulas = [
-    BinForm Impl (C (BinForm Impl (Var 'a') (Var 'b')))
-                 (BinForm Impl (C (Var 'a')) (C (Var 'b')))
-  , BinForm Impl (C (Var 'a')) (Not (C (Not (Var 'a'))))
-  , BinForm Equiv (C (BinForm And (Var 'a') (Var 'b')))
-                  (BinForm And (C (Var 'a')) (C (Var 'b')))
-  , BinForm Impl (BinForm Or (C (Var 'a')) (C (Var 'b')))
-                 (C (BinForm Or (Var 'a') (Var 'b')))
-  , BinForm Equiv (C (Var 'a')) (C (Not (Not (Var 'a'))))
-  , Not (C (BinForm And (Var 'a') (Not (Var 'a'))))
-  , BinForm Impl (C (BinForm And (Var 'a') (Not (Var 'a'))))
-                 (C (Var 'b'))
-  ]
+files :: [(Int, FilePath)]
+files = take 10 . map (\num -> (num, "bench/ex"++show num)) $ [1..]
 
-atrans, btrans :: String
-atrans = "pqrstu"
-btrans = reverse atrans
-
-vars :: [(Char,Char)]
-vars = zip atrans btrans
-
-replaceVars :: (Char -> Logic) -> Logic -> Logic
-replaceVars f (Var a) = f a
-replaceVars f (BinForm op a b) = BinForm op (replaceVars f a) (replaceVars f b)
-replaceVars f (Not a) = Not (replaceVars f a)
-replaceVars f (C a) = C (replaceVars f a)
-replaceVars _ x = x
-
-hugeTautManyVars :: Logic
-hugeTautManyVars = foldl1 (BinForm And) . zipWith (\(a,b) form ->
-  replaceVars (\c -> if c == 'a' then Var a else Var b) form) vars $ tautFormulas
-
-
-genTestCase :: Logic -> [Benchmark]
-genTestCase expr = naiveTestCase expr ++ dpllTestCase expr
-
-naiveTestCase :: Logic -> [Benchmark]
-naiveTestCase expr =
-  [ bench "LSB3T naiveSolverSat" $ whnf (uniRunSat Naive LSB3T) expr
-  , bench "LSB3T naiveSolverTaut" $ whnf (uniRunTaut Naive LSB3T) expr
-  , bench "LSB3P naiveSolverSat" $ whnf (uniRunSat Naive LSB3P) expr
-  , bench "LSB3P naiveSolverTaut" $ whnf (uniRunTaut Naive LSB3P) expr
-  ]
-
-dpllTestCase :: Logic -> [Benchmark]
-dpllTestCase expr =
-  [ bench "LSB3T DPLLSolverSat" $ whnf (uniRunSat DPLL LSB3T) expr
-  , bench "LSB3T DPLLSolverTaut" $ whnf (uniRunTaut DPLL LSB3T) expr
-  , bench "LSB3P DPLLSolverSat" $ whnf (uniRunSat DPLL LSB3P) expr
-  , bench "LSB3P DPLLSolverTaut" $ whnf (uniRunTaut DPLL LSB3P) expr
-  ]
+loadFormula :: Either a Logic -> Logic
+loadFormula (Right !x) = x
 
 main :: IO ()
 main = do
-  (Right bigsample) <- parseLogic <$> T.readFile "bench/bigsample"
-
+  !examples <- map (fmap $ loadFormula . parseLogic) <$> mapM (traverse T.readFile) files
   defaultMain
-    [ bgroup "simple expression" (genTestCase hugeTautManyVars)
-    , bgroup "bigsample (dpll only)" (dpllTestCase bigsample)
+    [ bgroup "dpll" $ singleGroup DPLL examples
+    , bgroup "naive" $ singleGroup Naive (take 5 $ examples)
     ]
