@@ -1,3 +1,6 @@
+{-|
+   Modul w ktorym zrealizowany zostal parser formuly logiki LSB3.
+-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoStrict #-}
@@ -148,5 +151,7 @@ parens :: Parser Logic -> Parser Logic
 parens = between (char '(') (char ')')
 
 
+-- | Funkcja konwertujaca wyrazenie zapisane tekstowo
+-- na reprezentacje uzywana w aplikacji.
 parseLogic :: Text -> Either ParseError Logic
 parseLogic = parse expr "" . T.filter (/=' ')

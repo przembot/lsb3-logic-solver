@@ -1,3 +1,7 @@
+{-|
+   Modul eksportujacy wszystkie mozliwosci
+   niniejszej biblioteki.
+-}
 module Lib (
     module Logic
   , module CNF

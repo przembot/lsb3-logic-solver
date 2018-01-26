@@ -1,5 +1,7 @@
-{-
-   Implementacja logiki LSB3
+{-|
+   Ponizszy modul przedstawia reprezentacje formuly
+   logicznej logiki LSB3 wraz z pomocniczymi funkcjami
+   do manipulacji nad formula.
 -}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -28,9 +30,9 @@ import Control.Applicative ((<|>))
 
 -- | Wartosci wystepujace w logike LSB3
 data TriVal =
-    TrueV
-  | Neither
-  | FalseV
+    TrueV -- ^ oznaczenie 1
+  | Neither -- ^ oznaczenie 1/2
+  | FalseV -- ^ oznaczenie 0
   deriving (Eq, Generic, NFData)
 
 
@@ -59,11 +61,13 @@ instance Show BinaryOp where
   show Impl = "->"
   show Equiv = "<->"
 
--- notO - negacja zewnetrzna
--- notI - negacja wewnetrzna
-notO, notI :: TriVal -> TriVal
+-- | Funkcja wyliczajaca negacje zewnetrzna
+notO :: TriVal -> TriVal
 notO TrueV = FalseV
 notO _ = TrueV
+
+-- | Funkcja wyliczajaca negacje wewnatrz funktora przekonaniowego
+notI :: TriVal -> TriVal
 notI TrueV = FalseV
 notI FalseV = TrueV
 notI x = x
@@ -118,6 +122,8 @@ sampleLogic' n = oneof [ Not <$> sampleLogic' (n-1)
                              subtree = sampleLogic' (n `div` 2)
 
 
+-- | Generuje losowa formule logiczna
+-- skladajaca sie z co najwyzej 32 zmiennych zdaniowych
 generateBigSample :: IO Logic
 generateBigSample = generate . resize 32 $ arbitrary
 
@@ -129,8 +135,7 @@ findUnassignedVar (Not x) = findUnassignedVar x
 findUnassignedVar (BinForm _ x y) = findUnassignedVar x <|> findUnassignedVar y
 findUnassignedVar (C x) = findUnassignedVar x
 
--- | Podstawia wartosc za dana zmienna
--- | w formule
+-- | Podstawia wartosc za dana zmienna w formule
 substitudeNaiveVar :: Char -> TriVal -> Logic -> Logic
 substitudeNaiveVar var val (Var x) =
   if x == var then Const val
@@ -138,14 +143,17 @@ substitudeNaiveVar var val (Var x) =
 substitudeNaiveVar var val expr = applyLogic (substitudeNaiveVar var val) expr
 
 
--- | Inspiracja recursion schemes
-applyLogic :: (Logic -> Logic) -> Logic -> Logic
+-- | Wprowadz dane przeksztalcenie w calej formule
+applyLogic :: (Logic -> Logic) -- ^ funkcja realizujaca przeksztalcenie
+           -> Logic -> Logic
 applyLogic f (BinForm op a b) = BinForm op (f a) (f b)
 applyLogic f (C x) = C (f x)
 applyLogic f (Not x) = Not (f x)
 applyLogic _ x = x
 
--- | Oblicza wartosc
+-- | Oblicza wartosc formuly logicznej.
+-- Jezeli formula nie da sie wyliczyc (np. jest w niej nieprzypisana zmienna)
+-- to zwracane jest Nothing.
 evalLogic :: LogicType -> Logic -> Maybe TriVal
 evalLogic _ (Const x) = Just x
 evalLogic _ (Var _) = Nothing
@@ -153,6 +161,8 @@ evalLogic lt (Not x) = notO <$> evalLogic lt x
 evalLogic lt (BinForm op x y) = evalOp op <$> evalLogic lt x <*> evalLogic lt y
 evalLogic lt (C x) = evalLogicI lt x
 
+-- | Oblicze wartosc formuly logicznej
+-- bedacej w funktorze przekonaniowym
 evalLogicI :: LogicType -> Logic -> Maybe TriVal
 evalLogicI _ (Const x) = Just x
 evalLogicI _ (Var _) = Nothing
@@ -161,7 +171,8 @@ evalLogicI lt (BinForm op x y) = evalOpI lt op <$> evalLogicI lt x <*> evalLogic
 evalLogicI lt (C x) = evalLogicI lt x
 
 
--- | Obliczenie wartosci formuly dla logiki zewnetrznej
+-- | Obliczenie wartosci formuly dla spojnikow druargumentowych
+-- logiki zewnetrznej
 evalOp :: BinaryOp -> TriVal -> TriVal -> TriVal
 evalOp Or TrueV _ = TrueV
 evalOp Or _ TrueV = TrueV
@@ -171,6 +182,8 @@ evalOp And _ _ = FalseV
 evalOp Impl a b = evalOp Or (notO a) b
 evalOp Equiv a b = evalOp And (evalOp Impl a b) (evalOp Impl b a)
 
+-- | Obliczenie wartosci formuly dla spojnikow druargumentowych
+-- | logiki wewnetrznej
 evalOpI :: LogicType -> BinaryOp -> TriVal -> TriVal -> TriVal
 evalOpI LSB3T = evalOpIT
 evalOpI LSB3P = evalOpIP

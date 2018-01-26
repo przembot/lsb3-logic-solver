@@ -7,7 +7,7 @@ license:             BSD3
 license-file:        LICENSE
 author:              Przemysław Kopański
 maintainer:          P.Kopanski@stud.elka.pw.edu.pl
-copyright:           2017 Przemysław Kopański
+copyright:           2018 Przemysław Kopański
 category:            Web
 build-type:          Simple
 cabal-version:       >=1.10 && < 1.25

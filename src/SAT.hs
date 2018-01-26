@@ -1,3 +1,7 @@
+{-|
+   Modul zawiera funkcje rozwiazujace problem spelnialnosci
+   w logice LSB3.
+-}
 module SAT (
     uniRunSat
   , uniRunTaut
@@ -20,9 +24,9 @@ import Text.Parsec (ParseError)
 import Logic
 import CNF
 
--- | Porownanie polarnosci - jezeli sa zgodne, to zapamietuje polarnosc.
--- | W przeciwnym przypadku zapominam.
--- | Nothing oznacza pomieszane polarnosci.
+-- | Porownanie polarnosci - jezeli sa zgodne, to polarnosc jest zapamietywana.
+-- W przeciwnym przypadku jest zapominana.
+-- Nothing oznacza pomieszane polarnosci.
 comparePols :: Eq a => Maybe a -> a -> Maybe a
 comparePols (Just x) y = if x == y then Just x
                                    else Nothing
@@ -65,7 +69,7 @@ stripPolarities = HM.mapMaybe (fmap polsToVal)
 
 
 -- | Czy klauzula zawiera tylko jedna zmienna - i jezli tak to jaka oraz
--- | co za nia nalezy podstawic
+-- co za nia nalezy podstawic
 isUnitClause :: Clause -> Maybe (Char, TriVal)
 isUnitClause [Pure (Pure (VarE x))] = Just (x, TrueV)
 isUnitClause [Pure (NotE (VarE x))] = Just (x, FalseV)
@@ -73,16 +77,16 @@ isUnitClause _ = Nothing
 
 
 -- | Mapa zawierajaca informacje o mozliwych podstawieniach przy uzyciu
--- | Unit Propagation
+-- Unit Propagation.
 assignments :: CNF -> HashMap Char TriVal
 assignments = HM.fromList
             . mapMaybe isUnitClause
 
 
--- | Wykonuje mozliwe podstawienia heurtystyczne
--- | Literal elimination: Podstaw za zmienna bedaca w jednej polarnosci w calym wyrazeniu
--- | odpowiednia stala wartosc
--- | Unit propagation: Podstawia wartosci za zmienne wystepujace samodzielnie
+-- | Wykonuje mozliwe podstawienia heurtystyczne.
+-- Literal elimination: Podstaw za zmienna bedaca w jednej polarnosci
+-- w calym wyrazeniu odpowiednia stala wartosc.
+-- Unit propagation: Podstawia wartosci za zmienne wystepujace samodzielnie.
 composedHeuristics :: CNF -> (Interpretation, CNF)
 composedHeuristics form =
   let
@@ -94,7 +98,7 @@ composedHeuristics form =
     ) form)
 
 -- | Upraszcza wedle mozliwosci wyrazenie CNF,
--- | jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
+-- jezeli jest to mozliwe zostaje zredukowane do jednej wartosci
 simplifyCNF :: CNF -> CNF
 simplifyCNF = foldl' reduceClauses []
            . map simplifyClause
@@ -168,7 +172,7 @@ findVar = listToMaybe . filterVars . stripAtoms
 
 
 -- | Jezeli w wyrazeniu znajduje sie wolna zmienna, zwraca ja
--- | jezeli nie, to zwraca wartosc calego wyrazenia
+-- jezeli nie, to zwraca wartosc calego wyrazenia
 isSimplified :: CNF -> Either Char TriVal
 isSimplified [] = Right TrueV
 isSimplified [[Pure (Pure (Lit x))]] = Right x
@@ -189,7 +193,7 @@ type Interpretation = [(Char, TriVal)]
 
 
 -- | Glowny silnik rozwiazywania problemu SAT przy uzyciu heurystyk
--- | zgodnie z algorytmem DPLL dostosowanym do logiki LSB3_P
+-- zgodnie z algorytmem DPLL dostosowanym do logiki LSB3_P.
 satDPLL :: Interpretation -> CNF -> Maybe Interpretation
 satDPLL hist expr =
   case isSimplified expr' of
@@ -208,7 +212,7 @@ satDPLL hist expr =
 
 
 -- | Silnik sluzacy do rozwiazywania problemu SAT
--- | przy uzyciu naiwnego algorytmu prob i bledow
+-- przy uzyciu naiwnego algorytmu prob i bledow
 satNaive :: LogicType -> Interpretation -> Logic -> Maybe Interpretation
 satNaive lt hist expr =
   case findUnassignedVar expr of
@@ -237,7 +241,17 @@ throwOnNothing :: Error -> Maybe a -> Either Error a
 throwOnNothing _ (Just a) = Right a
 throwOnNothing e _ = Left e
 
+-- | Typ danych opisujacy wynik dzialania algorytmu
+-- rozwiazujacego problem spelnialnosci.
+-- Zostanie zwrocony albo blad wykonania,
+-- albo poprawna interpretacja formuly
 type SatResult = Either Error Interpretation
+
+-- | Typ danych opisujacy wynik dzialania algorytmu
+-- rozwiazujacego problem tautologicznosci.
+-- Zostanie zwrocony albo blad wykonania,
+-- albo pusta dana void oznaczajaca,
+-- ze formula jest tautologia.
 type TautResult = Either Error ()
 
 satToTautRes :: SatResult -> TautResult
@@ -258,16 +272,33 @@ runNaiveSat lt = maybe (Left NoInterpretationFound) Right
                . satNaive lt []
 
 
+-- | Typ danych mowiacych o tym, jakiego rodzaju algorytm
+-- chce wybrac uzytkownik - wykorzystujacy heurystyki (DPLL),
+-- badz naiwny.
 data SolverType = Naive
                 | DPLL
                 deriving (Eq, Show)
 
 
-uniRunSat :: LogicType -> SolverType -> Logic -> SatResult
+-- | Funkcja rozwiazujaca problem spelnialnosci.
+-- Nalezy miec na uwadze, ze aktualnie nie istnieje
+-- algorytm dla rodzaju LSB3_T wykorzystujacy
+-- heurystyki.
+uniRunSat :: LogicType -- ^ wybrany rodzaj logiki
+          -> SolverType -- ^ wybrany rodzaj algorytmu
+          -> Logic -- ^ badana formula logiczna
+          -> SatResult -- ^ wynik sprawdzania
 uniRunSat LSB3T _ = runNaiveSat LSB3T
 uniRunSat LSB3P DPLL = runSat
 uniRunSat LSB3P Naive = runNaiveSat LSB3P
 
 
-uniRunTaut :: LogicType -> SolverType -> Logic -> TautResult
+-- | Funkcja rozwiazujaca problem tautologicznosci.
+-- Nalezy miec na uwadze, ze aktualnie nie istnieje
+-- algorytm dla rodzaju LSB3_T wykorzystujacy
+-- heurystyki.
+uniRunTaut :: LogicType -- ^ wybrany rodzaj logiki
+           -> SolverType -- ^ wybrany rodzaj algorytmu
+           -> Logic -- ^ badana formula logiczna
+           -> TautResult -- ^ wynik sprawdzania
 uniRunTaut l s = satToTautRes . uniRunSat l s . Not

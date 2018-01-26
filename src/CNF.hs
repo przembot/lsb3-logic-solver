@@ -1,5 +1,9 @@
-{-
-   Modul zawierajacy opis i konwersje do NF
+{-|
+   Modul zawierajacy reprezentacje koniunkcyjnej postaci normalnej
+   wraz z funkcjami do manipulacji na niej
+   (m. in. modyfikacja wszystkich atomow).
+   Ponadto, znajduja sie tutaj funkcji dokonujace konwersji
+   formuly logicznej do koniunkcyjnej postaci normalnej.
 -}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
@@ -41,7 +45,7 @@ stripLits x = [x]
 
 
 -- | Przeksztalca wyrazenie bez -> i <-> wyrazenia w postaci normalnej.
--- | Wykorzystywane do uproszczenia wyrazenia pod funktorem przekonaniowym.
+-- Wykorzystywane do uproszczenia wyrazenia pod funktorem przekonaniowym.
 convertC :: Logic -> Logic
 convertC (Not (Not x)) = convertC x
 -- wartosc stala
@@ -57,9 +61,9 @@ convertC x = x
 
 
 -- | Przeksztalca wyrazenie bez -> i <-> do postaci normalnej.
--- | Zaklada, ze funktor przechowuje tylko i wylacznie jedna zmienna
--- | z opcjonalna negacja.
--- | Wykorzystywane do uproszczenia wyrazenia pod funktorem przekonaniowym.
+-- Zaklada, ze funktor przechowuje tylko i wylacznie jedna zmienna
+-- z opcjonalna negacja.
+-- Wykorzystywane do uproszczenia wyrazenia pod funktorem przekonaniowym.
 convert :: Logic -> Maybe CNF
 convert (C (Var x)) = Just [[Pure (Pure (VarE x))]]
 convert (C (Not (Var x))) = Just [[Pure (NotE (VarE x))]]
@@ -81,8 +85,8 @@ convert _ = Nothing -- przy poprawnym wyrazeniu nie powinno tutaj dojsc
 
 
 -- | Konweruje do koniunkcyjnej postaci normalnej
--- | wszystko znajdujace sie pod funktorem przekonaniowym
--- | oraz wydziela z funktora pojedyczne zmienne.
+-- wszystko znajdujace sie pod funktorem przekonaniowym
+-- oraz wydziela z funktora pojedyczne zmienne.
 simplifyFunctors :: Logic -> Logic
 simplifyFunctors (C x) = fixc . C . convertC $ x
 simplifyFunctors (Not (C x)) = Not . fixc . C . convertC $ x
@@ -96,33 +100,46 @@ fixc (C (BinForm Or x y)) = BinForm Or (fixc . C $ x) (fixc . C $ y)
 fixc x = x
 
 
--- | Konwertuje wyrazenie do postaci CNF
--- | Nie ma zmiennych poza funktorem C() - inaczej zwroci Nothing
+-- | Konwertuje wyrazenie do postaci CNF.
+-- Nie ma zmiennych poza funktorem C() - inaczej zwroci Nothing
 convertToCnf :: Logic -> Maybe CNF
 convertToCnf = convert . simplifyFunctors . replaceImpl
 
 
+-- | Koniunkcyjna postac normalna sklada sie
+-- z listy klauzul
 type CNF = [Clause]
+
+-- | Klauzula stanowi liste elementow
 type Clause = [Elem]
+
+-- | Element klauzuli stanowi atom, ktory moze
+-- miec negacje przed funktorem jak i wewnatrz
+-- funktora przekonaniowego
 type Elem = Negable (Negable Atom)
 
 
+-- | Usuwa oznaczenie okreslajace polarnosc
+-- sprzed dowolnego typu.
 unNegable :: Negable x -> x
 unNegable (Pure x) = x
 unNegable (NotE x) = x
 
--- | Datatype oznaczajacy, ze cos moze byc zanegowane
+-- | Datatype oznaczajacy, ze cos moze byc zanegowane.
 data Negable x =
-    Pure x
-  | NotE x
+    Pure x -- ^ dana x nie jest zanegowana
+  | NotE x -- ^ dana x jest zanegowana
   deriving (Show, Eq, Functor, Foldable, Traversable)
 
--- | Pojedynczy atom wystepujacy w wyrazeniu CNF
+-- | Pojedynczy atom wystepujacy w wyrazeniu CNF,
+-- ktorym jest albo wartosc stala, albo zmienna zdaniowa.
 data Atom =
     Lit TriVal
   | VarE Char
   deriving (Show, Eq)
 
+-- | Zwraca liste wszystkich atomow, ktore wystepuja
+-- w danej formule bedacej w postaci normalnej
 stripAtoms :: CNF -> [Atom]
 stripAtoms = map (unNegable . unNegable) . concat
 
@@ -130,12 +147,19 @@ getCharFromAtom :: Atom -> Maybe Char
 getCharFromAtom (VarE x) = Just x
 getCharFromAtom _ = Nothing
 
+-- | Zwraca wszystkie zmienne zdaniowe wystepujace w lisce atomow
 filterVars :: [Atom] -> String
 filterVars = mapMaybe getCharFromAtom
 
+-- | Modyfikuje wszystkie atomy w formule bedacej w postaci
+-- normalnej wykorzystujac funkcje bedaca pierwszym
+-- argumentem.
 modifyAllAtoms :: (Atom -> Atom) -> CNF -> CNF
 modifyAllAtoms = fmap . fmap . fmap . fmap
 
+-- | Modyfikuje wszystkie zmienne zdaniowe w formule bedacej w postaci
+-- normalnej wykorzystujac funkcje bedaca pierwszym
+-- argumentem.
 modifyAllVars :: (Char -> Atom) -> CNF -> CNF
 modifyAllVars f = modifyAllAtoms
                     (\case
@@ -144,9 +168,9 @@ modifyAllVars f = modifyAllAtoms
                     )
 
 -- | Konwertuje formule ze struktury danych
--- | reprezentujacej postac normalna
--- | do struktury danych reprezentujacej
--- | dowolne wyrazenie logiczne
+-- reprezentujacej postac normalna
+-- do struktury danych reprezentujacej
+-- dowolne wyrazenie logiczne
 cnfToLogic :: CNF -> Logic
 cnfToLogic = foldl1' (BinForm And)
            . map clauseToLogic
