@@ -1,5 +1,7 @@
 # Weryfikator wyrażeń logiki LSB3 / LSB3 logic formula verification app
 
+![Application animation](anim.gif)
+
 English below
 
 Aplikacja służy do sprawdzania spełnialności

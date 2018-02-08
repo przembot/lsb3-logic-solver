@@ -1,12 +1,9 @@
 name:                thesis
 version:             0.1.0.0
--- synopsis:
--- description:
--- homepage:            https://github.com/githubuser/thesis#readme
+homepage:            https://github.com/przembot/lsb3-logic-solver#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Przemysław Kopański
-maintainer:          P.Kopanski@stud.elka.pw.edu.pl
 copyright:           2018 Przemysław Kopański
 category:            Web
 build-type:          Simple
